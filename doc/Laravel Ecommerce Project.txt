@@ -1,0 +1,70 @@
+Laravel Ecommerce Project Vue Inertia
+=====================================
+
+
+1. Project Install: 
+Command: Laravel new b9-ecom-shop-vue
+
+Then, Answer:  Would you like to update now? (yes/no) [yes]:
+ > no
+
+Then, Answer:  Which starter kit would you like to install? [None]:
+  [none    ] None
+  [react   ] React
+  [svelte  ] Svelte
+  [vue     ] Vue
+  [livewire] Livewire
+ > vue
+vue
+
+Then, Answer: Which authentication provider do you prefer? [Laravel's built-in authentication]:
+  [laravel] Laravel's built-in authentication
+  [workos ] WorkOS (Requires WorkOS account)
+  [none   ] No authentication scaffolding
+ > laravel
+laravel
+
+Then, Answer: Would you like to add teams support to your application? (yes/no) [no]:
+ > no
+
+Then, Answer:  Which testing framework do you prefer? [Pest]:
+  [0] Pest
+  [1] PHPUnit
+ > Pest
+Pest
+
+Then, Answer:  Do you want to install Laravel Boost to improve AI assisted coding? (yes/no) [yes]:
+ > yes
+
+Then Answer:  Would you like to run npm install --ignore-scripts and npm run build? (yes/no) [yes]:
+ > yes
+
+Then, Answer: Which Boost features would you like to configure? [guidelines,skills,mcp]
+  AI Guidelines ........................................................................................... guidelines
+  Agent Skills ................................................................................................ skills
+  Boost MCP Server Configuration ................................................................................. mcp
+❯ mcp
+mcp
+
+Then, Answer: Which integrations would you like to configure for Boost? [None]
+  None ...............................................................................................................
+  Laravel Cloud ................................................................................................ cloud
+❯ none
+
+Then, Answer:  Which AI agents would you like to configure? [Cursor]
+  Amp ............................................................................................................ amp
+  Claude Code ............................................................................................ claude_code
+  Codex ........................................................................................................ codex
+  Cursor ...................................................................................................... cursor
+  Factory Droid .............................................................................................. factory
+  GitHub Copilot ............................................................................................. copilot
+  Junie ........................................................................................................ junie
+  Kiro .......................................................................................................... kiro
+  OpenCode .................................................................................................. opencode
+  Zed ............................................................................................................ zed
+❯ cursor
+cursor
+
+
+Then, Command: cd b9-ecom-shop-vue
+Then, Command: composer run dev
