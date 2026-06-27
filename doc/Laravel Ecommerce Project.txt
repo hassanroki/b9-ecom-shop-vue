@@ -480,3 +480,857 @@ Then, Command: php artisan migrate
 
 
 
+
+Ste 3: Model and Relationship:
+------------------------------
+Edit app>Models>User.php:
+-------------------------
+<?php
+
+namespace App\Models;
+
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
+use Laravel\Fortify\Contracts\PasskeyUser;
+use Laravel\Fortify\PasskeyAuthenticatable;
+use Laravel\Fortify\TwoFactorAuthenticatable;
+
+/**
+ * @property int $id
+ * @property string $name
+ * @property string $email
+ * @property Carbon|null $email_verified_at
+ * @property string $password
+ * @property string|null $two_factor_secret
+ * @property string|null $two_factor_recovery_codes
+ * @property Carbon|null $two_factor_confirmed_at
+ * @property string|null $remember_token
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ */
+#[Fillable(['name', 'email', 'password', 'role', 'phone'])]
+#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+class User extends Authenticatable implements PasskeyUser
+{
+    /** @use HasFactory<UserFactory> */
+    use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'two_factor_confirmed_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'role' => 'customer',
+    ];
+
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function wishlists(): HasMany
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+
+    public function cart(): HasOne
+    {
+        return $this->hasOne(Cart::class);
+    }
+
+    public function statusChanges(): HasMany
+    {
+        return $this->hasMany(OrderStatusHistory::class, 'changed_by');
+    }
+}
+
+
+
+
+
+
+
+3.1 Create Hero Slide Model:
+----------------------------
+Command: php artisan make:model HeroSlide
+
+Edit app>Models>HeroSlide.php:
+------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+
+#[Fillable([
+    'image',
+    'link',
+    'cta_label',
+    'sort_order',
+    'is_active',
+])]
+class HeroSlide extends Model
+{
+    //
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'sort_order' => 'integer',
+            'is_active' => 'boolean',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'sort_order' => 0,
+        'is_active' => true,
+    ];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+3.2 Create Category Model:
+--------------------------
+Command: php artisan make:model Category
+
+Edit app>Models>Category.php:
+-----------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+#[Fillable([
+    'name',
+    'slug',
+    'image',
+    'description',
+    'sort_order',
+    'is_active',
+])]
+class Category extends Model
+{
+    //
+    use SoftDeletes;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'sort_order' => 'integer',
+            'is_active' => 'boolean',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'sort_order' => 0,
+        'is_active' => true,
+    ];
+
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+3.3 Create Product Model:
+--------------------------
+Command: php artisan make:model Product
+
+Edit app>Models>Product.php:
+-----------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+#[Fillable([
+    'category_id',
+    'name',
+    'slug',
+    'short_description',
+    'description',
+    'price',
+    'compare_at_price',
+    'stock_status',
+    'is_best_seller',
+    'is_featured',
+    'is_active',
+    'sold_count',
+])]
+class Product extends Model
+{
+    //
+    use SoftDeletes;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'price' => 'decimal:2',
+            'compare_at_price' => 'decimal:2',
+            'is_best_seller' => 'boolean',
+            'is_featured' => 'boolean',
+            'is_active' => 'boolean',
+            'sold_count' => 'integer',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'stock_status' => 'in_stock',
+        'is_best_seller' => false,
+        'is_featured' => false,
+        'is_active' => true,
+        'sold_count' => 0,
+    ];
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class);
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function cartItems(): HasMany
+    {
+        return $this->hasMany(CartItem::class);
+    }
+
+    public function wishlists(): HasMany
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+3.4 Create Product Image Model:
+-------------------------------
+Command: php artisan make:model ProductImage
+
+Edit app>Models>ProductImage.php:
+---------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'product_id',
+    'image_path',
+    'alt_text',
+    'is_primary',
+    'sort_order',
+])]
+class ProductImage extends Model
+{
+    //
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_primary' => 'boolean',
+            'sort_order' => 'integer',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'is_primary' => false,
+        'sort_order' => 0,
+    ];
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+3.5 Create Cart Model:
+----------------------
+Command: php artisan make:model Cart
+
+Edit app>Models>Cart.php:
+-------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+#[Fillable([
+    'user_id',
+    'session_id',
+])]
+class Cart extends Model
+{
+    //
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(CartItem::class);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+3.6 Create Cart Item Model:
+---------------------------
+Command: php artisan make:model CartItem
+
+Edit app>Models>CartItem.php:
+-----------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'cart_id',
+    'product_id',
+    'quantity',
+])]
+class CartItem extends Model
+{
+    //
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'quantity' => 'integer',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'quantity' => 1,
+    ];
+
+    public function cart(): BelongsTo
+    {
+        return $this->belongsTo(Cart::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+
+
+
+
+
+
+
+3.7 Create Order Model:
+------------------------
+Command: php artisan make:model Order
+Edit app>Models>Order.php:
+--------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+#[Fillable([
+    'order_number',
+    'user_id',
+    'customer_name',
+    'phone',
+    'email',
+    'district',
+    'area',
+    'address',
+    'notes',
+    'subtotal',
+    'delivery_charge',
+    'total',
+    'payment_method',
+    'payment_status',
+    'status',
+    'placed_at',
+])]
+class Order extends Model
+{
+    //
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'subtotal' => 'decimal:2',
+            'delivery_charge' => 'decimal:2',
+            'total' => 'decimal:2',
+            'placed_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'delivery_charge' => 0,
+        'payment_status' => 'pending',
+        'status' => 'pending',
+    ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(OrderStatusHistory::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+}
+
+
+
+
+
+
+
+
+
+3.8 Create Order Item Model:
+----------------------------
+Command: php artisan make:model OrderItem
+Edit app>Models>OrderItem.php:
+------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'order_id',
+    'product_id',
+    'product_name',
+    'unit_price',
+    'quantity',
+    'line_total',
+])]
+class OrderItem extends Model
+{
+    //
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'unit_price' => 'decimal:2',
+            'quantity' => 'integer',
+            'line_total' => 'decimal:2',
+        ];
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+
+
+
+
+
+
+3.9 Create Payment Model:
+-------------------------
+Command: php artisan make:model Payment
+Edit app>Models>Payment.php:
+----------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'order_id',
+    'gateway',
+    'transaction_id',
+    'val_id',
+    'amount',
+    'currency',
+    'status',
+    'card_type',
+    'bank_tran_id',
+    'store_amount',
+    'raw_response',
+    'paid_at',
+])]
+class Payment extends Model
+{
+    //
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'amount' => 'decimal:2',
+            'store_amount' => 'decimal:2',
+            'raw_response' => 'array',
+            'paid_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'gateway' => 'sslcommerz',
+        'currency' => 'BDT',
+        'status' => 'initiated',
+    ];
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+3.10 Create Order Status History Model:
+---------------------------------------
+Command: php artisan make:model OrderStatusHistory
+Edit app>Models>OrderStatusHistory.php:
+---------------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'order_id',
+    'status',
+    'note',
+    'changed_by',
+    'created_at',
+])]
+class OrderStatusHistory extends Model
+{
+    //
+    public const UPDATED_AT = null;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'created_at' => 'datetime',
+        ];
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function changedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'changed_by');
+    }
+}
+
+
+
+
+
+
+
+
+
+3.11 Create Review Model:
+-------------------------
+Command: php artisan make:model Review
+Edit app>Models>Review.php:
+---------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'product_id',
+    'user_id',
+    'order_id',
+    'rating',
+    'comment',
+    'is_approved',
+    'approved_at',
+])]
+class Review extends Model
+{
+    //
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'rating' => 'integer',
+            'is_approved' => 'boolean',
+            'approved_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'is_approved' => false,
+    ];
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+}
+
+
+
+
+
+
+3.12 Create Wish List Model:
+----------------------------
+Command: php artisan make:model WishList
+Edit app>Models>WishList.php:
+-----------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'user_id',
+    'product_id',
+])]
+class WishList extends Model
+{
+    //
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
