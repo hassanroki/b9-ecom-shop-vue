@@ -3,6 +3,7 @@ Laravel Ecommerce Project Vue Inertia
 
 
 1. Project Install: 
+-------------------
 Command: Laravel new b9-ecom-shop-vue
 
 Then, Answer:  Would you like to update now? (yes/no) [yes]:
@@ -68,3 +69,414 @@ cursor
 
 Then, Command: cd b9-ecom-shop-vue
 Then, Command: composer run dev
+
+
+
+
+
+
+1.1 Env edit:
+-------------
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=b9_ecom_shop_vue
+DB_USERNAME=root
+DB_PASSWORD=
+
+Then, Command: php artisan config:cache
+Then, Command: php artisan migrate
+
+
+
+
+
+
+
+
+
+
+
+
+Step 2: Migration Step:
+-----------------------
+2.1 Users Add Two Column:
+-------------------------
+Command: php artisan make:migration add_role_and_phone_to_users_table --table=users
+
+Edit database>migrations>2026_06_25_063448_add_role_and_phone_to_users_table.php:
+---------------------------------------------------------------------------------
+public function up(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->enum('role', ['admin', 'customer'])->default('customer')->index()->after('password');
+            $table->string('phone', 20)->nullable()->after('role');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn(['role', 'phone']);
+        });
+    }
+
+
+
+
+
+
+2.2 Hero Slide Table Create:
+----------------------------
+Command: php artisan make:migration create_hero_slides_table
+
+Edit database>migrations>2026_06_25_064146_create_hero_slides_table.php:
+------------------------------------------------------------------------
+Schema::create('hero_slides', function (Blueprint $table) {
+            $table->id();
+            $table->string('image');
+            $table->string('link')->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+
+            $table->index(['is_active', 'sort_order']);
+        });
+
+
+
+
+
+
+
+
+
+
+
+2.3 Category Table Create:
+--------------------------
+Command: php artisan make:migration create_categories_table
+
+Edit database>migrations>2026_06_25_064840_create_categories_table.php:
+------------------------------------------------------------------------
+Schema::create('categories', function (Blueprint $table) {
+            $table->id();
+            $table->string('name', 150);
+            $table->string('slug', 170)->unique();
+            $table->string('image')->nullable();
+            $table->text('description')->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['is_active', 'sort_order']);
+        });
+
+
+
+
+
+
+
+
+
+
+2.4 Product Table Create:
+--------------------------
+Command: php artisan make:migration create_products_table
+
+Edit database>migrations>2026_06_25_065137_create_products_table.php:
+------------------------------------------------------------------------
+Schema::create('products', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('category_id')->constrained()->restrictOnDelete();
+            $table->string('name', 200);
+            $table->string('slug', 220)->unique();
+            $table->string('short_description')->nullable();
+            $table->longText('description')->nullable();
+            $table->decimal('price', 10, 2);
+            $table->decimal('compare_at_price', 10, 2)->nullable();
+            $table->enum('stock_status', ['in_stock', 'stock_out'])->default('in_stock');
+            $table->boolean('is_best_seller')->default(false)->index();
+            $table->boolean('is_featured')->default(false)->index();
+            $table->boolean('is_active')->default(true);
+            $table->unsignedInteger('sold_count')->default(0);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['is_active', 'stock_status']);
+            $table->index('created_at');
+        });
+
+
+
+
+
+
+
+2.5 Product Image Table Create:
+-------------------------------
+Command: php artisan make:migration create_product_images_table
+
+Edit database>migrations>2026_06_25_065322_create_product_images_table.php:
+--------------------------------------------------------------------------
+Schema::create('product_images', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->string('image_path');
+            $table->string('alt_text')->nullable();
+            $table->boolean('is_primary')->default(false);
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+
+            $table->index(['product_id', 'is_primary']);
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+2.6 Carts Table Create:
+-----------------------
+Command: php artisan make:migration create_carts_table
+
+Edit database>migrations>2026_06_25_065825_create_carts_table.php:
+------------------------------------------------------------------
+Schema::create('carts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->string('session_id')->nullable()->index();
+            $table->timestamps();
+        });
+
+
+
+
+
+
+
+
+
+2.7 Cart Items Table Create:
+-----------------------------
+Command: php artisan make:migration create_cart_items_table
+
+Edit database>migrations>2026_06_25_070801_create_cart_items_table.php:
+-----------------------------------------------------------------------
+Schema::create('cart_items', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('cart_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->unsignedInteger('quantity')->default(1);
+            $table->timestamps();
+
+            $table->unique(['cart_id', 'product_id']);
+        });
+
+
+
+
+
+
+
+
+
+
+2.8 Orders Table Create:
+------------------------
+Command: php artisan make:migration create_orders_table
+
+Edit database>migrations>2026_06_25_070957_create_orders_table.php:
+-------------------------------------------------------------------
+Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+            $table->string('order_number', 32)->unique();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('customer_name', 150);
+            $table->string('phone', 20)->index();
+            $table->string('email');
+            $table->string('district', 100);
+            $table->string('area', 150);
+            $table->text('address');
+            $table->text('notes')->nullable();
+            $table->decimal('subtotal', 12, 2);
+            $table->decimal('delivery_charge', 10, 2)->default(0);
+            $table->decimal('total', 12, 2);
+            $table->enum('payment_method', ['cod', 'sslcommerz']);
+            $table->enum('payment_status', ['pending', 'paid', 'failed', 'cancelled'])->default('pending')->index();
+            $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])->default('pending')->index();
+            $table->timestamp('placed_at')->nullable();
+            $table->timestamps();
+
+            $table->index('created_at');
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+2.9 Order Items Table Create:
+------------------------------
+Command: php artisan make:migration create_order_items_table
+
+Edit database>migrations>2026_06_25_071132_create_order_items_table.php:
+------------------------------------------------------------------------
+Schema::create('order_items', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('order_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('product_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('product_name', 200);
+            $table->decimal('unit_price', 10, 2);
+            $table->unsignedInteger('quantity');
+            $table->decimal('line_total', 12, 2);
+            $table->timestamps();
+
+            $table->index('product_id');
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+2.10 Payment Items Table Create:
+------------------------------
+Command: php artisan make:migration create_payments_table
+
+Edit database>migrations>2026_06_25_071256_create_payments_table.php:
+---------------------------------------------------------------------
+Schema::create('payments', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('order_id')->constrained()->cascadeOnDelete();
+            $table->string('gateway', 30)->default('sslcommerz');
+            $table->string('transaction_id', 100)->nullable()->unique();
+            $table->string('val_id', 100)->nullable()->unique();
+            $table->decimal('amount', 12, 2);
+            $table->string('currency', 3)->default('BDT');
+            $table->enum('status', ['initiated', 'success', 'failed', 'cancelled'])->default('initiated')->index();
+            $table->string('card_type', 50)->nullable();
+            $table->string('bank_tran_id', 100)->nullable();
+            $table->decimal('store_amount', 12, 2)->nullable();
+            $table->json('raw_response')->nullable();
+            $table->timestamp('paid_at')->nullable();
+            $table->timestamps();
+        });
+
+
+
+
+
+
+
+
+
+
+2.11 Order Status Histories Items Table Create:
+------------------------------------------------
+Command: php artisan make:migration create_order_status_histories_table
+
+Edit database>migrations>2026_06_25_071423_create_order_status_histories_table.php:
+-----------------------------------------------------------------------------------
+Schema::create('order_status_histories', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('order_id')->constrained()->cascadeOnDelete();
+            $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled']);
+            $table->string('note')->nullable();
+            $table->foreignId('changed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('created_at')->useCurrent();
+        });
+
+
+
+
+
+
+
+
+
+2.12 Review Table Create:
+-------------------------
+Command: php artisan make:migration create_reviews_table
+
+Edit database>migrations>2026_06_25_071551_create_reviews_table.php:
+--------------------------------------------------------------------
+Schema::create('reviews', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('order_id')->nullable()->constrained()->nullOnDelete();
+            $table->unsignedTinyInteger('rating');
+            $table->text('comment')->nullable();
+            $table->boolean('is_approved')->default(false);
+            $table->timestamp('approved_at')->nullable();
+            $table->timestamps();
+
+            $table->index(['product_id', 'is_approved']);
+            $table->unique(['user_id', 'product_id']);
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+2.12 Wishlist Table Create:
+---------------------------
+Command: php artisan make:migration create_wishlists_table
+
+Edit database>migrations>2026_06_25_081134_create_wishlists_table.php:
+-----------------------------------------------------------------------
+Schema::create('wishlists', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->timestamps();
+
+            $table->unique(['user_id', 'product_id']);
+        });
+
+Then, Command: php artisan migrate
+
+
+
+
+
+
+
+
+
+
+
