@@ -1,0 +1,594 @@
+Laravel E-commerce Project Design Front:
+========================================
+
+Step 1: Controller Create
+--------------------------
+
+1.1 Create Cart Controller:
+--------------------------
+Command: php artisan make:controller Storefront/CartController
+
+Edit app>Http>Storefront>CartController.php:
+--------------------------------------------
+/**
+     * Display the shopping cart page.
+     */
+    public function __invoke(): Response
+    {
+        return Inertia::render('shop/Cart');
+    }
+
+
+
+1.2 Create Checkout Controller:
+------------------------------
+Command: php artisan make:controller Storefront/CheckoutController
+
+Edit app>Http>Storefront>Checkout.php:
+--------------------------------------
+ /**
+     * Display the checkout page.
+     */
+    public function __invoke(): Response
+    {
+        return Inertia::render('shop/Checkout');
+    }
+
+
+
+1.3 Create Home Controller:
+--------------------------
+Command: php artisan make:controller Storefront/HomeController
+
+Edit app>Http>Storefront>HomeController.php:
+--------------------------------------------
+/**
+     * Display the storefront homepage.
+     */
+    public function __invoke(): Response
+    {
+        return Inertia::render('shop/Home');
+    }
+
+
+
+1.4 Create Order Success Controller:
+-----------------------------------
+Command: php artisan make:controller Storefront/OrderSuccessController
+
+Edit app>Http>Storefront>OrderSuccessController.php:
+----------------------------------------------------
+/**
+     * Display the order success page.
+     */
+    public function __invoke(): Response
+    {
+        return Inertia::render('shop/OrderSuccess');
+    }
+
+
+
+1.5 Create Product Controller:
+-----------------------------
+Command: php artisan make:controller Storefront/ProductController
+
+Edit app>Http>Storefront>ProductController.php:
+-----------------------------------------------
+/**
+     * Static product slugs available during the design prototype phase.
+     *
+     * @var list<string>
+     */
+    private const STATIC_SLUGS = [
+        'wireless-noise-cancelling-headphones',
+    ];
+
+    /**
+     * Display the product details page.
+     */
+    public function show(string $slug): Response|HttpResponse
+    {
+        abort_unless(in_array($slug, self::STATIC_SLUGS, true), 404);
+
+        return Inertia::render('shop/ProductShow', [
+            'slug' => $slug,
+        ]);
+    }
+
+
+
+1.6 Create Shop Controller:
+--------------------------
+Command: php artisan make:controller Storefront/ShopController
+
+Edit app>Http>Storefront>ShopController.php:
+--------------------------------------------
+/**
+     * Display the storefront product catalog.
+     */
+    public function __invoke(): Response
+    {
+        return Inertia::render('shop/Shop');
+    }
+
+
+
+1.7 Create Wishlist Controller:
+------------------------------
+Command: php artisan make:controller Storefront/WishlistController
+
+Edit app>Http>Storefront>WishlistController.php:
+------------------------------------------------
+/**
+     * Display the wishlist page.
+     */
+    public function __invoke(): Response
+    {
+        return Inertia::render('shop/Wishlist');
+    }
+
+
+
+
+
+
+
+
+
+
+
+Step 2: Create Web Route:
+-------------------------
+Route::get('/', HomeController::class)->name('home');
+Route::get('/shop', ShopController::class)->name('shop.index');
+Route::get('/products/{slug}', [ProductController::class, 'show'])->name('shop.products.show');
+Route::get('/cart', CartController::class)->name('shop.cart');
+Route::get('/wishlist', WishlistController::class)->name('shop.wishlist');
+Route::get('/checkout', CheckoutController::class)->name('shop.checkout');
+Route::get('/orders/success', OrderSuccessController::class)->name('shop.orders.success');
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+});
+
+
+
+
+
+
+
+
+Step 3: Common CSS:
+-------------------
+3.1 Edit resources>css>shop.css:
+--------------------------------
+@theme {
+    --font-shop:
+        'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+        sans-serif;
+
+    --color-shop-primary-50: #eff6ff;
+    --color-shop-primary-600: #2563eb;
+    --color-shop-primary-700: #1d4ed8;
+    --color-shop-accent-500: #f59e0b;
+    --color-shop-accent-600: #d97706;
+}
+
+@layer utilities {
+    .font-shop {
+        font-family: var(--font-shop);
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+}
+
+/* Hero carousel cross-fade */
+.shop-slide {
+    opacity: 0;
+    transition: opacity 700ms ease-in-out;
+    pointer-events: none;
+}
+
+.shop-slide.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shop-slide {
+        transition: none;
+    }
+}
+
+
+
+
+
+
+3.2 Import shop.css:
+-------------------
+Edit resources>css>app.css:
+---------------------------
+@import './shop.css';
+
+
+
+
+
+
+
+
+4. Create Components:
+---------------------
+
+4.1 Create ShopCartDrawer.vue Components:
+-----------------------------------------
+Edit resources/components/shop/ShopCartDrawer.vue:
+--------------------------------------------------
+
+
+4.2 Create ShopCartLineItem.vue Components:
+-------------------------------------------
+Edit resources/components/shop/ShopCartLineItem.vue:
+----------------------------------------------------
+
+
+4.3 Create ShopCartSummary.vue Components:
+------------------------------------------
+Edit resources/components/shop/ShopCartSummary.vue:
+---------------------------------------------------
+
+
+4.4 Create ShopCartDrawer.vue Components:
+-----------------------------------------
+Edit resources/components/shop/ShopCartDrawer.vue:
+--------------------------------------------------
+
+
+4.5 Create ShopCatalogToolbar.vue Components:
+---------------------------------------------
+Edit resources/components/shop/ShopCatalogToolbar.vue:
+------------------------------------------------------
+
+
+4.6 Create ShopCategryGrid.vue Components:
+------------------------------------------
+Edit resources/components/shop/ShopCategryGrid.vue:
+---------------------------------------------------
+
+
+4.7 Create ShopCheckoutSummary.vue Components:
+----------------------------------------------
+Edit resources/components/shop/ShopCheckoutSummary.vue:
+-------------------------------------------------------
+
+
+4.8 Create ShopFilterChips.vue Components:
+------------------------------------------
+Edit resources/components/shop/ShopFilterChips.vue:
+---------------------------------------------------
+
+
+4.9 Create ShopFilters.vue Components:
+--------------------------------------
+Edit resources/components/shop/ShopFilters.vue:
+-----------------------------------------------
+
+
+4.10 Create ShopFooter.vue Components:
+--------------------------------------
+Edit resources/components/shop/ShopFooter.vue:
+----------------------------------------------
+
+
+4.11 Create ShopHeader.vue Components:
+--------------------------------------
+Edit resources/components/shop/ShopHeader.vue:
+----------------------------------------------
+
+
+4.12 Create ShopHeroCarousel.vue Components:
+--------------------------------------------
+Edit resources/components/shop/ShopHeroCarousel.vue:
+----------------------------------------------------
+
+
+4.13 Create ShopLogo.vue Components:
+--------------------------------------
+Edit resources/components/shop/ShopLogo.vue:
+--------------------------------------------
+
+
+4.14 Create ShopMobieDrawer.vue Components:
+-------------------------------------------
+Edit resources/components/shop/ShopMobieDrawer.vue:
+---------------------------------------------------
+
+
+4.15 Create ShopMobileProductBar.vue Components:
+------------------------------------------------
+Edit resources/components/shop/ShopMobileProductBar.vue:
+--------------------------------------------------------
+
+
+4.16 Create ShopNewsleter.vue Components:
+-----------------------------------------
+Edit resources/components/shop/ShopNewsleter.vue:
+--------------------------------------------------
+
+
+4.17 Create ShopOrderConfirmation.vue Components:
+-------------------------------------------------
+Edit resources/components/shop/ShopOrderConfirmation.vue:
+---------------------------------------------------------
+
+
+4.17 Create ShopPagination.vue Components:
+------------------------------------------
+Edit resources/components/shop/ShopPagination.vue:
+--------------------------------------------------
+
+
+4.19 Create ShopPageBreadcrumb.vue Components:
+----------------------------------------------
+Edit resources/components/shop/ShopPageBreadcrumb.vue:
+------------------------------------------------------
+
+
+4.20 Create ShopProductCard.vue Components:
+-------------------------------------------
+Edit resources/components/shop/ShopProductCard.vue:
+----------------------------------------------------
+
+
+4.21 Create ShopProductGallery.vue Components:
+----------------------------------------------
+Edit resources/components/shop/ShopProductGallery.vue:
+------------------------------------------------------
+
+
+4.22 Create ShopProductInfo.vue Components:
+-------------------------------------------
+Edit resources/components/shop/ShopProductInfo.vue:
+---------------------------------------------------
+
+
+4.23 Create ShopProductSection.vue Components:
+----------------------------------------------
+Edit resources/components/shop/ShopProductSection.vue:
+------------------------------------------------------
+
+
+4.24 Create ShopProductTabs.vue Components:
+-------------------------------------------
+Edit resources/components/shop/ShopProductTabs.vue:
+---------------------------------------------------
+
+
+4.25 Create ShopRelatedProucts.vue Components:
+----------------------------------------------
+Edit resources/components/shop/ShopRelatedProucts.vue:
+------------------------------------------------------
+
+
+4.26 Create ShopStarRating.vue Components:
+-----------------------------------------
+Edit resources/components/shop/ShopStarRating.vue:
+--------------------------------------------------
+
+
+4.27 Create ShopToast.vue Components:
+-------------------------------------
+Edit resources/components/shop/ShopToast.vue:
+---------------------------------------------
+
+
+4.28 Create ShopTrustStrip.vue Components:
+-----------------------------------------
+Edit resources/components/shop/ShopTrustStrip.vue:
+--------------------------------------------------
+
+
+4.29 Create ShopWishlistCard.vue Components:
+--------------------------------------------
+Edit resources/components/shop/ShopWishlistCard.vue:
+-----------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Step 5: Create Composables
+--------------------------
+5.1 Create useShopCarousel.ts:
+------------------------------
+Edit resources/js/composables/shop/useShopCarousels.ts:
+-------------------------------------------------------
+
+
+5.2 Create useShopCart.ts:
+--------------------------
+Edit resources/js/composables/shop/useShopCart.ts:
+--------------------------------------------------
+
+
+5.3 Create useShopCatalog.ts:
+-----------------------------
+Edit resources/js/composables/shop/useShopCatalog.ts:
+-----------------------------------------------------
+
+5.4 Create useShopOrder.ts:
+---------------------------
+Edit resources/js/composables/shop/useShopOrder.ts:
+---------------------------------------------------
+
+
+5.5 Create useShopUi.ts:
+------------------------
+Edit resources/js/composables/shop/useShopUi.ts:
+------------------------------------------------
+
+
+5.6 Create useShopWishlist.ts:
+------------------------------
+Edit resources/js/composables/shop/useShopWishlist.ts:
+-------------------------------------------------------
+
+
+
+
+
+
+Step 6: Layouts Create:
+-----------------------
+
+6.1 Create AppLayout.vue:
+--------------------------
+Edit resources/js/layouts/shop/ShopLayout.vue:
+----------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+Step 7: Create lib
+------------------
+7.1 Create currency.ts:
+-----------------------
+Edit resources/js/lib/shop/currency.ts:
+---------------------------------------
+
+
+7.2 Create product.ts:
+-----------------------
+Edit resources/js/lib/shop/product.ts:
+---------------------------------------
+
+
+
+
+
+
+
+
+Step 8: Create Pages:
+---------------------
+8.1 Create Cart.vue Pages:
+--------------------------
+Edit resources/js/pages/shop/Cart.vue:
+--------------------------------------
+
+
+8.2 Create Checkout.vue Pages:
+------------------------------
+Edit resources/js/pages/shop/Checkout.vue:
+-----------------------------------------
+
+
+8.3 Create Home.vue Pages:
+--------------------------
+Edit resources/js/pages/shop/Home.vue:
+--------------------------------------
+
+
+8.4 Create OrderSuccess.vue Pages:
+----------------------------------
+Edit resources/js/pages/shop/OrderSuccess.vue:
+----------------------------------------------
+
+
+8.5 Create ProductShow.vue Pages:
+---------------------------------
+Edit resources/js/pages/shop/ProductShow.vue:
+---------------------------------------------
+
+
+8.6 Create Shop.vue Pages:
+--------------------------
+Edit resources/js/pages/shop/Shop.vue:
+--------------------------------------
+
+
+8.7 Create Wishlist.vue Pages:
+------------------------------
+Edit resources/js/pages/shop/Wishlist.vue:
+------------------------------------------
+
+
+
+
+
+
+
+
+Step 9: Create Types
+---------------------
+9.1 Create shop.ts:
+-------------------
+Edit resources/js/types/shop.ts:
+--------------------------------
+
+
+
+
+
+
+Step 10: Create data:
+---------------------
+10.1 Create cart-checkout.ts:
+-----------------------------
+Edit resources/js/data/shop/cart-checkout.ts:
+---------------------------------------------
+
+
+
+10.2 Create catalog.ts:
+-----------------------
+Edit resources/js/data/shop/catalog.ts:
+---------------------------------------
+
+10.3 Create product-details.ts:
+------------------------------
+Edit resources/js/data/shop/product-details.ts:
+-----------------------------------------------
+
+
+10.4 Create static.ts:
+----------------------
+Edit resources/js/data/shop/static.ts:
+--------------------------------------
+
+
+
+
+
+
+
+
+
+
+
