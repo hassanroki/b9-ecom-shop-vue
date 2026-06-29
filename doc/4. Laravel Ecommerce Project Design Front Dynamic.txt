@@ -1,0 +1,508 @@
+Laravel E-commerce Project Design Front Dynamic
+===============================================
+
+
+Step 1: Home Page Dynamic
+-------------------------
+1.1 Edit Home Controller:
+-------------------------
+Edit app/Http/Controllers/Storefront/HomeController.php:
+--------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\Collection;
+use App\Models\Category;
+use App\Models\HeroSlide;
+use App\Models\Product;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection as SupportCollection;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class HomeController extends Controller
+{
+    private const HOMEPAGE_PRODUCT_LIMIT = 4;
+
+    /**
+     * Display the storefront homepage.
+     */
+    public function __invoke(): Response
+    {
+        return Inertia::render('shop/Home', [
+            'heroSlides' => $this->heroSlides(),
+            'categories' => $this->categories(),
+            'bestSellingProducts' => $this->products(
+                fn($query) => $query->where('is_best_seller', true)->orderByDesc('sold_count'),
+                'Best Seller',
+            ),
+            'newCollectionProducts' => $this->products(
+                fn($query) => $query->where('is_featured', true)->orderByDesc('created_at'),
+                'New',
+            ),
+        ]);
+    }
+
+    /**
+     * @return list<array{src: string, alt: string}>
+     */
+    private function heroSlides(): array
+    {
+        return HeroSlide::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['image'])
+            ->map(fn(HeroSlide $slide): array => [
+                'src' => $slide->image,
+                'alt' => 'Featured promotion banner',
+            ])
+            ->all();
+    }
+
+    /**
+     * @return list<array{name: string, img: string, href: string}>
+     */
+    private function categories(): array
+    {
+        return Category::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['name', 'slug', 'image'])
+            ->map(fn(Category $category): array => [
+                'name' => $category->name,
+                'img' => $category->image,
+                'href' => route('shop.index', ['category' => $category->name]),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  callable(Builder<Product>): mixed  $scope
+     * @return list<array{
+     *     name: string,
+     *     slug: string,
+     *     price: float,
+     *     oldPrice: float|null,
+     *     img: string,
+     *     rating: float,
+     *     reviews: int,
+     *     inStock: bool,
+     *     tag: string
+     * }>
+     */
+    private function products(callable $scope, string $tag): array
+    {
+        $query = Product::query()
+            ->where('is_active', true)
+            ->with(['images' => fn($query) => $query->where('is_primary', true)])
+            ->withAvg(['reviews' => fn($query) => $query->where('is_approved', true)], 'rating')
+            ->withCount(['reviews' => fn($query) => $query->where('is_approved', true)]);
+
+        $scope($query);
+
+        /** @var Collection<int, Product> $products */
+        $products = $query
+            ->limit(self::HOMEPAGE_PRODUCT_LIMIT)
+            ->get();
+
+        return $this->mapProducts($products, $tag)->all();
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @return SupportCollection<int, array{
+     *     name: string,
+     *     slug: string,
+     *     price: float,
+     *     oldPrice: float|null,
+     *     img: string,
+     *     rating: float,
+     *     reviews: int,
+     *     inStock: bool,
+     *     tag: string
+     * }>
+     */
+    private function mapProducts(Collection $products, string $tag): SupportCollection
+    {
+        return $products->map(function (Product $product) use ($tag): array {
+            $primaryImage = $product->images->first();
+
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'price' => (float) $product->price,
+                'oldPrice' => $product->compare_at_price !== null
+                    ? (float) $product->compare_at_price
+                    : null,
+                'img' => $primaryImage?->image_path ?? '',
+                'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
+                'reviews' => (int) $product->reviews_count,
+                'inStock' => $product->stock_status === 'in_stock',
+                'tag' => $tag,
+            ];
+        });
+    }
+}
+
+
+
+
+
+
+1.2 Edit useShopCarousel.ts composables:
+----------------------------------------
+Edit resources/js/composables/shop/useShopCarousel.ts:
+------------------------------------------------------
+import { onMounted, onUnmounted, ref } from 'vue';
+
+const AUTO_MS = 5000;
+
+export function useShopCarousel(slideCount: number) {
+    const current = ref(0);
+    let autoTimer: ReturnType<typeof setInterval> | undefined;
+
+    function goTo(index: number): void {
+        if (slideCount === 0) {
+            return;
+        }
+
+        current.value = (index + slideCount) % slideCount;
+    }
+
+    function next(): void {
+        goTo(current.value + 1);
+    }
+
+    function prev(): void {
+        goTo(current.value - 1);
+    }
+
+    function startAuto(): void {
+        stopAuto();
+        autoTimer = setInterval(next, AUTO_MS);
+    }
+
+    function stopAuto(): void {
+        clearInterval(autoTimer);
+    }
+
+    function handleTouchStart(event: TouchEvent): number {
+        stopAuto();
+
+        return event.changedTouches[0].screenX;
+    }
+
+    function handleTouchEnd(event: TouchEvent, touchStartX: number): void {
+        const delta = event.changedTouches[0].screenX - touchStartX;
+
+        if (Math.abs(delta) > 40) {
+            if (delta < 0) {
+                next();
+            } else {
+                prev();
+            }
+        }
+
+        startAuto();
+    }
+
+    onMounted(() => {
+        if (slideCount > 0) {
+            startAuto();
+        }
+    });
+
+    onUnmounted(() => {
+        stopAuto();
+    });
+
+    return {
+        current,
+        goTo,
+        next,
+        prev,
+        startAuto,
+        stopAuto,
+        handleTouchStart,
+        handleTouchEnd,
+    };
+}
+
+
+
+
+
+1.3 Edit ShopCategoryGrid.vue components:
+-----------------------------------------
+Edit resources/js/components/shop/ShopCategoryGrid.vue:
+-------------------------------------------------------
+<script setup lang="ts">
+import shop from '@/routes/shop';
+import type { ShopCategory } from '@/types/shop';
+import { Link } from '@inertiajs/vue3';
+
+defineProps<{
+    categories: ShopCategory[];
+}>();
+</script>
+
+<template>
+    <section id="categories" class="bg-white py-12 md:py-16 lg:py-24">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="mb-8 flex items-end justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900 md:text-3xl">
+                        Shop by category
+                    </h2>
+                    <p class="mt-2 text-sm text-gray-600 md:text-base">
+                        Find exactly what you're looking for.
+                    </p>
+                </div>
+                <Link :href="shop.index()"
+                    class="hidden items-center gap-1 text-sm font-medium text-shop-primary-600 hover:text-shop-primary-700 sm:inline-flex">
+                    All categories
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                </Link>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:gap-6 lg:grid-cols-6">
+                <a v-for="category in categories" :key="category.name" :href="category.href"
+                    class="group overflow-hidden rounded-xl border border-gray-200 bg-white transition duration-300 ease-out hover:-translate-y-1 hover:border-shop-primary-600 hover:shadow-xl">
+                    <div class="relative aspect-square overflow-hidden bg-gray-100">
+                        <img :src="category.img" :alt="category.name" loading="lazy"
+                            class="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-110" />
+                        <div
+                            class="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/45 via-black/5 to-transparent p-2 opacity-0 transition duration-300 group-hover:opacity-100">
+                            <span
+                                class="inline-flex h-8 w-8 translate-y-1 items-center justify-center rounded-full bg-white text-shop-primary-600 shadow transition duration-300 group-hover:translate-y-0">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6" />
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <span
+                        class="block px-2 py-3 text-center text-sm font-medium text-gray-900 transition group-hover:text-shop-primary-600">{{
+                            category.name }}</span>
+                </a>
+            </div>
+        </div>
+    </section>
+</template>
+
+
+
+
+
+1.4 Edit ShopHeroCarousel.vue components:
+-----------------------------------------
+Edit resources/js/components/shop/ShopHeroCarousel.vue:
+-------------------------------------------------------
+<script setup lang="ts">
+import { ref } from 'vue';
+import { useShopCarousel } from '@/composables/shop/useShopCarousel';
+import type { ShopCarouselSlide } from '@/types/shop';
+
+const { slides } = defineProps<{
+    slides: ShopCarouselSlide[];
+}>();
+
+const {
+    current,
+    goTo,
+    next,
+    prev,
+    startAuto,
+    stopAuto,
+    handleTouchStart,
+    handleTouchEnd,
+} = useShopCarousel(slides.length);
+
+const touchStartX = ref(0);
+
+function onTouchStart(event: TouchEvent): void {
+    touchStartX.value = handleTouchStart(event);
+}
+
+function onTouchEnd(event: TouchEvent): void {
+    handleTouchEnd(event, touchStartX.value);
+}
+</script>
+
+<template>
+    <section v-if="slides.length > 0" class="relative" aria-roledescription="carousel" aria-label="Featured promotions">
+        <div class="relative h-[40vh] overflow-hidden sm:h-[55vh] lg:h-[70vh]" @mouseenter="stopAuto"
+            @mouseleave="startAuto" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
+            <div v-for="(slide, index) in slides" :key="index" class="shop-slide absolute inset-0"
+                :class="{ active: current === index }" role="group" aria-roledescription="slide"
+                :aria-label="`${index + 1} of ${slides.length}`">
+                <img :src="slide.src" :alt="slide.alt" class="h-full w-full object-cover" />
+            </div>
+
+            <button type="button" aria-label="Previous slide"
+                class="absolute top-1/2 left-4 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-900 shadow transition hover:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none md:flex"
+                @click="
+                    prev();
+                startAuto();
+                ">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
+            <button type="button" aria-label="Next slide"
+                class="absolute top-1/2 right-4 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-900 shadow transition hover:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none md:flex"
+                @click="
+                    next();
+                startAuto();
+                ">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+            </button>
+
+            <div class="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">
+                <button v-for="(_, index) in slides" :key="index" type="button" :aria-label="`Go to slide ${index + 1}`"
+                    class="h-2.5 w-2.5 rounded-full transition" :class="current === index ? 'bg-white' : 'bg-white/50'
+                        " :aria-current="current === index ? 'true' : 'false'" @click="
+                        goTo(index);
+                    startAuto();
+                    " />
+            </div>
+        </div>
+    </section>
+</template>
+
+
+
+
+
+
+1.5 Edit Home.vue Pages:
+------------------------
+Edit resources/js/pages/shop/Home.vue:
+--------------------------------------
+<script setup lang="ts">
+import { Head, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import ShopCategoryGrid from '@/components/shop/ShopCategoryGrid.vue';
+import ShopHeroCarousel from '@/components/shop/ShopHeroCarousel.vue';
+import ShopNewsletter from '@/components/shop/ShopNewsletter.vue';
+import ShopProductSection from '@/components/shop/ShopProductSection.vue';
+import ShopTrustStrip from '@/components/shop/ShopTrustStrip.vue';
+import type {
+    ShopCarouselSlide,
+    ShopCategory,
+    ShopProduct,
+} from '@/types/shop';
+
+const page = usePage();
+
+const heroSlides = computed(
+    () => (page.props.heroSlides as ShopCarouselSlide[] | undefined) ?? [],
+);
+const categories = computed(
+    () => (page.props.categories as ShopCategory[] | undefined) ?? [],
+);
+const bestSellingProducts = computed(
+    () =>
+        (page.props.bestSellingProducts as ShopProduct[] | undefined) ?? [],
+);
+const newCollectionProducts = computed(
+    () =>
+        (page.props.newCollectionProducts as ShopProduct[] | undefined) ?? [],
+);
+
+const hasStorefrontData = computed(
+    () =>
+        heroSlides.value.length > 0 ||
+        categories.value.length > 0 ||
+        bestSellingProducts.value.length > 0 ||
+        newCollectionProducts.value.length > 0,
+);
+</script>
+
+<template>
+    <Head title="Home">
+        <meta
+            name="description"
+            content="ShopEase — shop the best of electronics, fashion, home & more. Cash on Delivery and online payment across Bangladesh."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            rel="preconnect"
+            href="https://fonts.gstatic.com"
+            crossorigin="anonymous"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+    </Head>
+
+    <div
+        v-if="!hasStorefrontData"
+        class="border-b border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900"
+    >
+        Storefront data is not loaded yet. Run
+        <code class="rounded bg-white px-2 py-1 font-mono text-xs"
+            >php artisan db:seed</code
+        >
+        to populate demo products, categories, and hero slides.
+    </div>
+
+    <ShopHeroCarousel :slides="heroSlides" />
+    <ShopTrustStrip />
+    <ShopCategoryGrid v-if="categories.length > 0" :categories="categories" />
+    <ShopProductSection
+        v-if="bestSellingProducts.length > 0"
+        id="bestselling"
+        title="Best selling"
+        description="Loved most by our customers this month."
+        :products="bestSellingProducts"
+        background="gray"
+    />
+    <ShopProductSection
+        v-if="newCollectionProducts.length > 0"
+        id="newcollection"
+        title="New collection"
+        description="Just landed — be the first to grab them."
+        :products="newCollectionProducts"
+    />
+    <ShopNewsletter />
+</template>
+
+
+
+
+
+
+
+
+
+
+Step 2: Product Details Page Dynamic
+------------------------------------
+2.1 Edit Product Controller:
+----------------------------
+Edit app/Http/Controller/Storefront/ProductController.php:
+----------------------------------------------------------
+ProductController
+ProductShow.vue
+ShopProductBreadcrumb.vue
+ShopProductTabs.vue
+ShopProductTabs.vue
+
+
+
+
+
+
+
+
+

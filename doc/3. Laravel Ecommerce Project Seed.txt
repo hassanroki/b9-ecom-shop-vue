@@ -1,5 +1,5 @@
-Laravel E-commerce Project Design Front Dynamic:
-================================================
+Laravel E-commerce Project Seed:
+================================
 
 Step 1: Create Seeders
 ----------------------
