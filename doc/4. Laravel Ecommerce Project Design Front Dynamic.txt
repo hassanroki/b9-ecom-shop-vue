@@ -1053,6 +1053,1349 @@ function submitReview(event: Event): void {
 
 
 
+Step 3: Shop Page Dynamic
+-------------------------
+3.1 Edit Shop Controller:
+-------------------------
+Edit app/Http/controller/Storefront/ShopController.php:
+-------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Models\Category;
+use App\Models\Product;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class ShopController extends Controller
+{
+    private const PER_PAGE = 8;
+
+    private const VALID_SORTS = ['newest', 'price-asc', 'price-desc', 'best'];
+
+    private const VALID_PRICE_RANGES = ['all', '0-1000', '1000-3000', '3000-6000', '6000-'];
+
+    /**
+     * Display the storefront product catalog.
+     */
+    public function __invoke(Request $request): Response
+    {
+        $filters = $this->resolvedFilters($request);
+        $paginator = $this->catalogQuery($filters)
+            ->paginate(self::PER_PAGE, ['*'], 'page', $filters['page']);
+
+        return Inertia::render('shop/Shop', [
+            'categories' => fn() => $this->categoryFilters(),
+            'products' => $paginator->getCollection()
+                ->map(fn(Product $product) => $this->mapCatalogProduct($product))
+                ->all(),
+            'meta' => [
+                'total' => $paginator->total(),
+                'perPage' => $paginator->perPage(),
+                'currentPage' => $paginator->currentPage(),
+                'lastPage' => $paginator->lastPage(),
+            ],
+            'filters' => $filters,
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     categories: list<string>,
+     *     price: string,
+     *     inStock: bool,
+     *     sort: string,
+     *     search: string,
+     *     page: int
+     * }
+     */
+    private function resolvedFilters(Request $request): array
+    {
+        $categories = array_values(array_filter(
+            array_map('strval', (array) $request->input('categories', [])),
+        ));
+
+        $price = (string) $request->input('price', 'all');
+        $sort = (string) $request->input('sort', 'newest');
+
+        return [
+            'categories' => $categories,
+            'price' => in_array($price, self::VALID_PRICE_RANGES, true) ? $price : 'all',
+            'inStock' => $request->boolean('in_stock'),
+            'sort' => in_array($sort, self::VALID_SORTS, true) ? $sort : 'newest',
+            'search' => (string) $request->input('search', ''),
+            'page' => max(1, (int) $request->input('page', 1)),
+        ];
+    }
+
+    /**
+     * @param  array{categories: list<string>, price: string, inStock: bool, sort: string, search: string, page: int}  $filters
+     */
+    private function catalogQuery(array $filters): Builder
+    {
+        $query = Product::query()
+            ->where('is_active', true)
+            ->with([
+                'category',
+                'images' => fn($q) => $q->where('is_primary', true),
+            ])
+            ->withAvg(['reviews' => fn($q) => $q->where('is_approved', true)], 'rating')
+            ->withCount(['reviews' => fn($q) => $q->where('is_approved', true)]);
+
+        if (! empty($filters['categories'])) {
+            $slugs = $filters['categories'];
+            $query->whereHas('category', fn(Builder $q) => $q->whereIn('slug', $slugs));
+        }
+
+        [$min, $max] = $this->parsePriceRange($filters['price']);
+
+        if ($min !== null) {
+            $query->where('price', '>=', $min);
+        }
+
+        if ($max !== null) {
+            $query->where('price', '<=', $max);
+        }
+
+        if ($filters['inStock']) {
+            $query->where('stock_status', 'in_stock');
+        }
+
+        if ($filters['search'] !== '') {
+            $term = $filters['search'];
+            $query->where(
+                fn(Builder $q) => $q
+                    ->where('name', 'like', "%{$term}%")
+                    ->orWhere('short_description', 'like', "%{$term}%")
+            );
+        }
+
+        match ($filters['sort']) {
+            'price-asc' => $query->orderBy('price'),
+            'price-desc' => $query->orderByDesc('price'),
+            'best' => $query->orderByDesc('sold_count'),
+            default => $query->orderByDesc('id'),
+        };
+
+        return $query;
+    }
+
+    /**
+     * @return array{0: float|null, 1: float|null}
+     */
+    private function parsePriceRange(string $price): array
+    {
+        if ($price === 'all') {
+            return [null, null];
+        }
+
+        [$min, $max] = explode('-', $price, 2);
+
+        return [
+            $min !== '' ? (float) $min : null,
+            $max !== '' ? (float) $max : null,
+        ];
+    }
+
+    /**
+     * @return list<array{name: string, slug: string}>
+     */
+    private function categoryFilters(): array
+    {
+        return Category::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['name', 'slug'])
+            ->map(fn(Category $category): array => [
+                'name' => $category->name,
+                'slug' => $category->slug,
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array{
+     *     id: int, name: string, slug: string, price: float, oldPrice: float|null,
+     *     img: string, rating: float, reviews: int, inStock: bool,
+     *     category: string, tag: string|null, sold: int
+     * }
+     */
+    private function mapCatalogProduct(Product $product): array
+    {
+        $primaryImage = $product->images->first();
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'price' => (float) $product->price,
+            'oldPrice' => $product->compare_at_price !== null
+                ? (float) $product->compare_at_price
+                : null,
+            'img' => $primaryImage?->image_path ?? '',
+            'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
+            'reviews' => (int) $product->reviews_count,
+            'inStock' => $product->stock_status === 'in_stock',
+            'category' => $product->category->name,
+            'tag' => $product->is_best_seller ? 'Best Seller' : ($product->is_featured ? 'New' : null),
+            'sold' => $product->sold_count,
+        ];
+    }
+}
+
+
+
+
+3.2 Edit shop.ts Types:
+-----------------------
+Edit resources/js/types/shop.ts:
+--------------------------------
+export type ShopProduct = {
+    id?: number;
+    name: string;
+    slug?: string;
+    price: number;
+    oldPrice?: number;
+    img: string;
+    rating: number;
+    reviews: number;
+    inStock: boolean;
+    tag?: string;
+};
+
+export type ShopCatalogProduct = ShopProduct & {
+    id: number;
+    category: string;
+    sold: number;
+};
+
+export type ShopSortOption = 'newest' | 'best' | 'price-asc' | 'price-desc';
+
+export type ShopPriceRange =
+    | 'all'
+    | '0-1000'
+    | '1000-3000'
+    | '3000-6000'
+    | '6000-';
+
+export type ShopProductImage = {
+    full: string;
+    thumb: string;
+};
+
+export type ShopRatingBreakdown = {
+    stars: number;
+    percent: number;
+};
+
+export type ShopReview = {
+    name: string;
+    rating: number;
+    date: string;
+    verified: boolean;
+    text: string;
+};
+
+export type ShopProductDetail = ShopProduct & {
+    id: number;
+    slug: string;
+    category: string;
+    categoryHref: string;
+    summary: string;
+    description: string[];
+    features: string[];
+    images: ShopProductImage[];
+    ratingBreakdown: ShopRatingBreakdown[];
+    reviewList: ShopReview[];
+};
+
+export type ShopCategoryFilter = {
+    name: string;
+    slug: string;
+};
+
+export type ShopFilters = {
+    categories: string[];
+    price: string;
+    inStock: boolean;
+    sort: string;
+    search: string;
+    page: number;
+};
+
+export type ShopPaginationMeta = {
+    total: number;
+    perPage: number;
+    currentPage: number;
+    lastPage: number;
+};
+
+export type ShopCategory = {
+    name: string;
+    img: string;
+    href: string;
+};
+
+export type ShopCarouselSlide = {
+    src: string;
+    alt: string;
+};
+
+export type ShopCartItem = {
+    productId: number;
+    name: string;
+    slug: string;
+    price: number;
+    img: string;
+    qty: number;
+    inStock: boolean;
+};
+
+export type ShopCart = {
+    qty: number;
+    items: ShopCartItem[];
+};
+
+export type ShopWishlistItem = ShopProduct & {
+    id: number;
+};
+
+export type ShopWishlist = {
+    count: number;
+    productIds: number[];
+    items: ShopWishlistItem[];
+};
+
+export type ShopPlacedOrder = {
+    orderNumber: string;
+    total: number;
+    paymentLabel: string;
+};
+
+export type ShopCheckoutConfig = {
+    insideDhaka: number;
+    outsideDhaka: number;
+    dhakaDistrict: string;
+};
+
+
+
+
+
+3.3 Edit catalog.ts Data:
+-------------------------
+Edit resources/js/data/shop/catalog.ts:
+---------------------------------------
+import type { ShopCatalogProduct } from '@/types/shop';
+
+export const shopCategories = [
+    'All Categories',
+    'Electronics',
+    'Fashion',
+    'Home & Living',
+    'Beauty',
+    'Sports',
+] as const;
+
+export const shopPriceRanges = [
+    { value: 'all', label: 'All Prices' },
+    { value: '0-1000', label: 'Under ৳ 1,000' },
+    { value: '1000-3000', label: '৳ 1,000 – ৳ 3,000' },
+    { value: '3000-6000', label: '৳ 3,000 – ৳ 6,000' },
+    { value: '6000-', label: 'Over ৳ 6,000' },
+] as const;
+
+export const catalogProducts: ShopCatalogProduct[] = [
+    {
+        id: 14,
+        name: 'Wireless Noise-Cancelling Headphones',
+        slug: 'wireless-noise-cancelling-headphones',
+        price: 6499,
+        oldPrice: 8999,
+        img: 'photo-1505740420928-5e560c06d30e',
+        rating: 4.8,
+        reviews: 214,
+        inStock: true,
+        category: 'Electronics',
+        tag: 'Best Seller',
+        sold: 980,
+    },
+    {
+        id: 13,
+        name: 'Smart Fitness Watch Series 6',
+        slug: 'smart-fitness-watch-series-6',
+        price: 4299,
+        img: 'photo-1523275335684-37898b6baf30',
+        rating: 4.6,
+        reviews: 167,
+        inStock: true,
+        category: 'Electronics',
+        tag: 'Best Seller',
+        sold: 870,
+    },
+    {
+        id: 12,
+        name: 'Classic Leather Sneakers',
+        slug: 'classic-leather-sneakers',
+        price: 2999,
+        oldPrice: 3999,
+        img: 'photo-1542291026-7eec264c27ff',
+        rating: 4.7,
+        reviews: 132,
+        inStock: true,
+        category: 'Fashion',
+        sold: 760,
+    },
+    {
+        id: 11,
+        name: 'Premium Sunglasses UV400',
+        slug: 'premium-sunglasses-uv400',
+        price: 1599,
+        img: 'photo-1572635196237-14b3f281503f',
+        rating: 4.5,
+        reviews: 98,
+        inStock: false,
+        category: 'Fashion',
+        sold: 540,
+    },
+    {
+        id: 10,
+        name: 'Minimalist Backpack 20L',
+        slug: 'minimalist-backpack-20l',
+        price: 2499,
+        img: 'photo-1553062407-98eeb64c6a62',
+        rating: 4.4,
+        reviews: 41,
+        inStock: true,
+        category: 'Fashion',
+        tag: 'New',
+        sold: 320,
+    },
+    {
+        id: 9,
+        name: 'Ceramic Pour-Over Coffee Set',
+        slug: 'ceramic-pour-over-coffee-set',
+        price: 1899,
+        img: 'photo-1495774856032-8b90bbb32b32',
+        rating: 4.9,
+        reviews: 23,
+        inStock: true,
+        category: 'Home & Living',
+        tag: 'New',
+        sold: 210,
+    },
+    {
+        id: 8,
+        name: 'Mechanical Keyboard RGB',
+        slug: 'mechanical-keyboard-rgb',
+        price: 5499,
+        oldPrice: 6299,
+        img: 'photo-1587829741301-dc798b83add3',
+        rating: 4.7,
+        reviews: 36,
+        inStock: true,
+        category: 'Electronics',
+        sold: 430,
+    },
+    {
+        id: 7,
+        name: 'Cotton Oversized T-Shirt',
+        slug: 'cotton-oversized-t-shirt',
+        price: 899,
+        img: 'photo-1521572163474-6864f9cf17ab',
+        rating: 4.3,
+        reviews: 18,
+        inStock: false,
+        category: 'Fashion',
+        sold: 150,
+    },
+    {
+        id: 6,
+        name: 'Portable Bluetooth Speaker',
+        slug: 'portable-bluetooth-speaker',
+        price: 2199,
+        oldPrice: 2799,
+        img: 'photo-1608043152269-423dbba4e7e1',
+        rating: 4.5,
+        reviews: 89,
+        inStock: true,
+        category: 'Electronics',
+        sold: 620,
+    },
+    {
+        id: 5,
+        name: 'Wireless Earbuds Pro',
+        slug: 'wireless-earbuds-pro',
+        price: 3499,
+        img: 'photo-1590658268037-6bf12165a8df',
+        rating: 4.7,
+        reviews: 142,
+        inStock: true,
+        category: 'Electronics',
+        tag: 'Best Seller',
+        sold: 810,
+    },
+    {
+        id: 4,
+        name: 'Scented Soy Candle Set',
+        slug: 'scented-soy-candle-set',
+        price: 749,
+        img: 'photo-1602874801007-bd458bb1b8b6',
+        rating: 4.6,
+        reviews: 52,
+        inStock: true,
+        category: 'Home & Living',
+        sold: 280,
+    },
+    {
+        id: 3,
+        name: 'Matte Lipstick Collection',
+        slug: 'matte-lipstick-collection',
+        price: 1299,
+        oldPrice: 1699,
+        img: 'photo-1586495777744-4413f21062fa',
+        rating: 4.4,
+        reviews: 64,
+        inStock: true,
+        category: 'Beauty',
+        tag: 'New',
+        sold: 360,
+    },
+    {
+        id: 2,
+        name: 'Yoga Mat Non-Slip',
+        slug: 'yoga-mat-non-slip',
+        price: 1450,
+        img: 'photo-1601925260368-ae2f83cf8b7f',
+        rating: 4.5,
+        reviews: 77,
+        inStock: true,
+        category: 'Sports',
+        sold: 290,
+    },
+    {
+        id: 1,
+        name: 'Stainless Steel Water Bottle',
+        slug: 'stainless-steel-water-bottle',
+        price: 999,
+        img: 'photo-1602143407151-7111542de6e8',
+        rating: 4.6,
+        reviews: 110,
+        inStock: false,
+        category: 'Sports',
+        sold: 470,
+    },
+];
+
+
+
+
+
+3.4 Edit useShopCatalog.ts Composables:
+---------------------------------------
+Edit resources/js/composables/shop/useShopCatalog.ts:
+------------------------------------------------------
+import { computed, ref } from 'vue';
+import { router, usePage } from '@inertiajs/vue3';
+import { shopPriceRanges } from '@/data/shop/catalog';
+import { QueryParams } from '@/wayfinder';
+import type {
+    ShopCatalogProduct,
+    ShopCategoryFilter,
+    ShopFilters,
+    ShopPaginationMeta,
+    ShopPriceRange,
+    ShopSortOption,
+} from '@/types/shop';
+
+// ─── Module-level singletons (shared across all components) ───────────────────
+
+const isFilterDrawerOpen = ref(false);
+const searchInput = ref('');
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+let searchInitialized = false;
+
+const DEFAULT_FILTERS: ShopFilters = {
+    categories: [],
+    price: 'all',
+    inStock: false,
+    sort: 'newest',
+    search: '',
+    page: 1,
+};
+
+function buildQueryParams(filters: ShopFilters): QueryParams {
+    const params: QueryParams = {};
+
+    if (filters.categories.length > 0) {
+        params.categories = filters.categories;
+    }
+
+    if (filters.price !== 'all') {
+        params.price = filters.price;
+    }
+
+    if (filters.inStock) {
+        params.in_stock = '1';
+    }
+
+    if (filters.sort !== 'newest') {
+        params.sort = filters.sort;
+    }
+
+    if (filters.search.trim() !== '') {
+        params.search = filters.search.trim();
+    }
+
+    if (filters.page > 1) {
+        params.page = filters.page;
+    }
+
+    return params;
+}
+
+// ─── Composable ───────────────────────────────────────────────────────────────
+
+export function useShopCatalog() {
+    const inertiaPage = usePage();
+
+    // ── Server props ────────────────────────────────────────────────────────
+
+    const products = computed(
+        () =>
+            (inertiaPage.props.products as ShopCatalogProduct[] | undefined) ??
+            [],
+    );
+
+    const categories = computed(
+        () =>
+            (inertiaPage.props.categories as
+                | ShopCategoryFilter[]
+                | undefined) ?? [],
+    );
+
+    const meta = computed(
+        (): ShopPaginationMeta =>
+            (inertiaPage.props.meta as ShopPaginationMeta | undefined) ?? {
+                total: 0,
+                perPage: 8,
+                currentPage: 1,
+                lastPage: 1,
+            },
+    );
+
+    const serverFilters = computed(
+        (): ShopFilters =>
+            (inertiaPage.props.filters as ShopFilters | undefined) ??
+            DEFAULT_FILTERS,
+    );
+
+    // Initialise search input from server on first composable access
+    if (!searchInitialized && inertiaPage.props.filters) {
+        searchInitialized = true;
+        const sf = inertiaPage.props.filters as ShopFilters;
+        searchInput.value = sf.search ?? '';
+    }
+
+    // ── Derived state ───────────────────────────────────────────────────────
+
+    const selectedCategories = computed(() => serverFilters.value.categories);
+    const priceRange = computed(
+        () => serverFilters.value.price as ShopPriceRange,
+    );
+    const inStockOnly = computed(() => serverFilters.value.inStock);
+    const sort = computed(() => serverFilters.value.sort as ShopSortOption);
+    const page = computed(() => meta.value.currentPage);
+    const totalPages = computed(() => meta.value.lastPage);
+    const total = computed(() => meta.value.total);
+    const hasActiveFilters = computed(
+        () =>
+            serverFilters.value.categories.length > 0 ||
+            serverFilters.value.price !== 'all' ||
+            serverFilters.value.inStock ||
+            serverFilters.value.search.trim() !== '',
+    );
+
+    // ── Actions ─────────────────────────────────────────────────────────────
+
+    function applyFilters(overrides: Partial<ShopFilters>): void {
+        const next: ShopFilters = { ...serverFilters.value, ...overrides };
+
+        router.get('/shop', buildQueryParams(next), {
+            preserveScroll: true,
+            replace: true,
+            only: ['products', 'meta', 'filters'],
+        });
+    }
+
+    function toggleCategory(slug: string): void {
+        const current = [...serverFilters.value.categories];
+        const idx = current.indexOf(slug);
+
+        if (idx === -1) {
+            current.push(slug);
+        } else {
+            current.splice(idx, 1);
+        }
+
+        applyFilters({ categories: current, page: 1 });
+    }
+
+    function setPriceRange(value: ShopPriceRange): void {
+        applyFilters({ price: value, page: 1 });
+    }
+
+    function setInStockOnly(value: boolean): void {
+        applyFilters({ inStock: value, page: 1 });
+    }
+
+    function setSort(value: ShopSortOption): void {
+        applyFilters({ sort: value, page: 1 });
+    }
+
+    function setSearch(value: string): void {
+        searchInput.value = value;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            applyFilters({ search: value.trim(), page: 1 });
+        }, 400);
+    }
+
+    function setPage(value: number): void {
+        applyFilters({ page: value });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function clearFilters(): void {
+        searchInput.value = '';
+        clearTimeout(searchTimer);
+        applyFilters(DEFAULT_FILTERS);
+    }
+
+    function openFilterDrawer(): void {
+        isFilterDrawerOpen.value = true;
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeFilterDrawer(): void {
+        isFilterDrawerOpen.value = false;
+        document.body.style.overflow = '';
+    }
+
+    const activeFilters = computed(() => {
+        const sf = serverFilters.value;
+        const chips: Array<{ label: string; clear: () => void }> = [];
+
+        sf.categories.forEach((slug) => {
+            const cat = categories.value.find((c) => c.slug === slug);
+            chips.push({
+                label: cat?.name ?? slug,
+                clear: () =>
+                    applyFilters({
+                        categories: sf.categories.filter((s) => s !== slug),
+                        page: 1,
+                    }),
+            });
+        });
+
+        if (sf.price !== 'all') {
+            const label =
+                shopPriceRanges.find((r) => r.value === sf.price)?.label ??
+                sf.price;
+            chips.push({
+                label,
+                clear: () => applyFilters({ price: 'all', page: 1 }),
+            });
+        }
+
+        if (sf.inStock) {
+            chips.push({
+                label: 'In Stock',
+                clear: () => applyFilters({ inStock: false, page: 1 }),
+            });
+        }
+
+        if (sf.search.trim() !== '') {
+            chips.push({
+                label: `"${sf.search.trim()}"`,
+                clear: () => {
+                    searchInput.value = '';
+                    applyFilters({ search: '', page: 1 });
+                },
+            });
+        }
+
+        return chips;
+    });
+
+    function removeFilter(index: number): void {
+        activeFilters.value[index]?.clear();
+    }
+
+    return {
+        // Server data
+        products,
+        categories,
+        meta,
+        total,
+        // Filter state (from server)
+        selectedCategories,
+        priceRange,
+        inStockOnly,
+        sort,
+        // Search (local ref for responsive input)
+        search: searchInput,
+        // Pagination (from server meta)
+        page,
+        totalPages,
+        // UI state
+        isFilterDrawerOpen,
+        hasActiveFilters,
+        activeFilters,
+        // Actions
+        toggleCategory,
+        setPriceRange,
+        setInStockOnly,
+        setSort,
+        setSearch,
+        setPage,
+        clearFilters,
+        openFilterDrawer,
+        closeFilterDrawer,
+        removeFilter,
+        applyFilters,
+    };
+}
+
+
+
+
+
+
+3.5 Edit ShopFilters.vue Components:
+------------------------------------
+Edit resources/js/components/shop/ShopFilters.vue:
+--------------------------------------------------
+<script setup lang="ts">
+import { shopPriceRanges } from '@/data/shop/catalog';
+import { useShopCatalog } from '@/composables/shop/useShopCatalog';
+import type { ShopPriceRange } from '@/types/shop';
+
+const {
+    categories,
+    selectedCategories,
+    priceRange,
+    inStockOnly,
+    isFilterDrawerOpen,
+    toggleCategory,
+    setPriceRange,
+    setInStockOnly,
+    clearFilters,
+    closeFilterDrawer,
+} = useShopCatalog();
+
+function handlePriceChange(event: Event): void {
+    setPriceRange((event.target as HTMLInputElement).value as ShopPriceRange);
+}
+
+function handleInStockChange(event: Event): void {
+    setInStockOnly((event.target as HTMLInputElement).checked);
+}
+</script>
+
+<template>
+    <div>
+        <div class="fixed inset-0 z-50 bg-black/40 lg:hidden" :class="isFilterDrawerOpen ? 'block' : 'hidden'"
+            @click="closeFilterDrawer" />
+
+        <aside id="filters" aria-label="Product filters"
+            class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85%] translate-x-full overflow-y-auto bg-white p-5 shadow-xl transition-transform duration-300 ease-in-out lg:static lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 lg:overflow-visible lg:bg-transparent lg:p-0 lg:shadow-none"
+            :class="isFilterDrawerOpen ? '!translate-x-0' : ''">
+            <div class="mb-4 flex items-center justify-between lg:hidden">
+                <span class="text-lg font-bold text-gray-900">Filters</span>
+                <button type="button" aria-label="Close filters"
+                    class="inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                    @click="closeFilterDrawer">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="space-y-6 lg:sticky lg:top-24">
+                <!-- Category (multi-select checkboxes) -->
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <h3 class="mb-3 text-sm font-semibold text-gray-900">
+                        Category
+                    </h3>
+                    <div class="space-y-1.5 text-sm">
+                        <label v-for="cat in categories" :key="cat.slug"
+                            class="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 hover:bg-gray-50">
+                            <input type="checkbox" :value="cat.slug" :checked="selectedCategories.includes(cat.slug)"
+                                class="h-4 w-4 rounded text-shop-primary-600 focus:ring-shop-primary-600"
+                                @change="toggleCategory(cat.slug)" />
+                            <span class="text-gray-600">{{ cat.name }}</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Price Range (radio — single select) -->
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <h3 class="mb-3 text-sm font-semibold text-gray-900">
+                        Price Range
+                    </h3>
+                    <div class="space-y-1.5 text-sm">
+                        <label v-for="range in shopPriceRanges" :key="range.value"
+                            class="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 hover:bg-gray-50">
+                            <input type="radio" name="price" :value="range.value" :checked="priceRange === range.value"
+                                class="h-4 w-4 text-shop-primary-600 focus:ring-shop-primary-600"
+                                @change="handlePriceChange" />
+                            <span class="text-gray-600">{{ range.label }}</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Availability -->
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <h3 class="mb-3 text-sm font-semibold text-gray-900">
+                        Availability
+                    </h3>
+                    <label
+                        class="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 text-sm hover:bg-gray-50">
+                        <input id="inStockOnly" type="checkbox" :checked="inStockOnly"
+                            class="h-4 w-4 rounded text-shop-primary-600 focus:ring-shop-primary-600"
+                            @change="handleInStockChange" />
+                        <span class="text-gray-600">In Stock only</span>
+                    </label>
+                </div>
+
+                <button type="button"
+                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                    @click="clearFilters">
+                    Clear all filters
+                </button>
+
+                <button type="button"
+                    class="w-full rounded-lg bg-shop-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-shop-primary-700 lg:hidden"
+                    @click="closeFilterDrawer">
+                    Show results
+                </button>
+            </div>
+        </aside>
+    </div>
+</template>
+
+
+
+
+
+
+3.6 Edit ShopPagination.vue Components:
+---------------------------------------
+Edit resources/js/components/shop/ShopPagination.vue:
+-----------------------------------------------------
+<script setup lang="ts">
+import { computed } from 'vue';
+import { useShopCatalog } from '@/composables/shop/useShopCatalog';
+
+const { page, totalPages, setPage } = useShopCatalog();
+
+const pages = computed(() =>
+    Array.from({ length: totalPages.value }, (_, i) => i + 1),
+);
+</script>
+
+<template>
+    <nav v-if="totalPages > 1" class="mt-10 flex items-center justify-center gap-1.5" aria-label="Pagination">
+        <button type="button" :disabled="page === 1" aria-label="Previous page"
+            class="inline-flex h-10 min-w-[2.5rem] items-center justify-center rounded-lg border px-3 text-sm font-medium transition"
+            :class="page === 1
+                    ? 'cursor-not-allowed border-gray-300 text-gray-700 opacity-40'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                " @click="setPage(page - 1)">
+            ‹
+        </button>
+
+        <button v-for="pageNumber in pages" :key="pageNumber" type="button"
+            class="inline-flex h-10 min-w-[2.5rem] items-center justify-center rounded-lg border px-3 text-sm font-medium transition"
+            :class="pageNumber === page
+                    ? 'border-shop-primary-600 bg-shop-primary-600 text-white'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                " @click="setPage(pageNumber)">
+            {{ pageNumber }}
+        </button>
+
+        <button type="button" :disabled="page === totalPages" aria-label="Next page"
+            class="inline-flex h-10 min-w-[2.5rem] items-center justify-center rounded-lg border px-3 text-sm font-medium transition"
+            :class="page === totalPages
+                    ? 'cursor-not-allowed border-gray-300 text-gray-700 opacity-40'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                " @click="setPage(page + 1)">
+            ›
+        </button>
+    </nav>
+</template>
+
+
+
+
+
+3.7 Edit ShopCatalogToolbar.vue Components:
+-------------------------------------------
+Edit resources/js/components/shop/ShopCatalogToolbar.vue:
+---------------------------------------------------------
+<script setup lang="ts">
+import { useShopCatalog } from '@/composables/shop/useShopCatalog';
+import type { ShopSortOption } from '@/types/shop';
+
+const { total, sort, openFilterDrawer, setSort } = useShopCatalog();
+
+function handleSortChange(event: Event): void {
+    setSort((event.target as HTMLSelectElement).value as ShopSortOption);
+}
+</script>
+
+<template>
+    <div class="mb-5 flex items-center justify-between gap-3">
+        <p class="text-sm text-gray-600">
+            <span class="font-semibold text-gray-900">{{ total }}</span>
+            products
+        </p>
+        <div class="flex items-center gap-2">
+            <button type="button"
+                class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 lg:hidden"
+                @click="openFilterDrawer">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L14 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 018 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                </svg>
+                Filters
+            </button>
+            <div class="flex items-center gap-2">
+                <label for="sortSelect" class="hidden text-sm text-gray-500 sm:block">Sort:</label>
+                <select id="sortSelect" :value="sort"
+                    class="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                    @change="handleSortChange">
+                    <option value="newest">Newest</option>
+                    <option value="best">Best Selling</option>
+                    <option value="price-asc">Price: Low to High</option>
+                    <option value="price-desc">Price: High to Low</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
+3.8 Edit ShopHeader.vue Components:
+-----------------------------------
+Edit resources/js/components/shop/ShopHeader.vue:
+-------------------------------------------------
+<script setup lang="ts">
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import ShopLogo from '@/components/shop/ShopLogo.vue';
+import { useShopCart } from '@/composables/shop/useShopCart';
+import { useShopCatalog } from '@/composables/shop/useShopCatalog';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import { useShopWishlist } from '@/composables/shop/useShopWishlist';
+import { home } from '@/routes';
+import shop from '@/routes/shop';
+
+const page = usePage();
+const { openMobileMenu } = useShopUi();
+const { cartQty } = useShopCart();
+const { wishCount } = useShopWishlist();
+const { search, setSearch } = useShopCatalog();
+
+const isShopPage = computed(() => page.component === 'shop/Shop');
+const isHomePage = computed(() => page.component === 'shop/Home');
+const isCartPage = computed(() => page.component === 'shop/Cart');
+const isWishlistPage = computed(() => page.component === 'shop/Wishlist');
+const isCheckoutPage = computed(() => page.component === 'shop/Checkout');
+const showMobileSearch = ref(false);
+
+function toggleMobileSearch(): void {
+    showMobileSearch.value = !showMobileSearch.value;
+}
+
+function handleSearchInput(event: Event): void {
+    if (!isShopPage.value) {
+        return;
+    }
+
+    setSearch((event.target as HTMLInputElement).value);
+}
+</script>
+
+<template>
+    <header class="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between gap-4">
+                <div class="flex items-center gap-2">
+                    <button type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobileDrawer"
+                        class="-ml-1 inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none lg:hidden"
+                        @click="openMobileMenu">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+
+                    <ShopLogo />
+                </div>
+
+                <nav class="hidden items-center gap-1 lg:flex" aria-label="Primary">
+                    <Link :href="home()" class="rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-gray-100"
+                        :class="isHomePage
+                                ? 'bg-gray-100 text-gray-900'
+                                : 'text-gray-600 hover:text-gray-900'
+                            ">
+                        Home
+                    </Link>
+                    <Link :href="shop.index()"
+                        class="rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-gray-100" :class="isShopPage
+                                ? 'bg-gray-100 text-gray-900'
+                                : 'text-gray-600 hover:text-gray-900'
+                            ">
+                        Shop
+                    </Link>
+                    <a href="/#categories"
+                        class="rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900">
+                        Categories
+                    </a>
+                    <a href="/#bestselling"
+                        class="rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900">
+                        Best Selling
+                    </a>
+                </nav>
+
+                <div class="hidden max-w-md flex-1 md:block">
+                    <label for="searchDesktop" class="sr-only">Search products</label>
+                    <div class="relative">
+                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                            </svg>
+                        </span>
+                        <input id="searchDesktop" type="search" :value="isShopPage ? search : ''"
+                            placeholder="Search for products…"
+                            class="w-full rounded-lg border border-gray-300 bg-gray-50 py-2.5 pr-4 pl-10 text-sm text-gray-900 transition placeholder:text-gray-400 focus:border-shop-primary-600 focus:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                            @input="handleSearchInput" />
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <button type="button" aria-label="Search"
+                        class="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none md:hidden"
+                        @click="toggleMobileSearch">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                        </svg>
+                    </button>
+                    <a href="#" aria-label="Account"
+                        class="hidden h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none sm:inline-flex">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                    </a>
+                    <Link :href="shop.wishlist()" :aria-label="`Wishlist, ${wishCount} items`"
+                        class="relative inline-flex h-11 w-11 items-center justify-center rounded-lg focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                        :class="isWishlistPage
+                                ? 'bg-red-50 text-red-600'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            ">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                        <span
+                            class="absolute -top-0.5 -right-0.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-shop-accent-500 px-1 text-xs font-semibold text-white">
+                            {{ wishCount }}
+                        </span>
+                    </Link>
+                    <Link :href="shop.cart()" :aria-label="`Cart, ${cartQty} items`"
+                        class="relative inline-flex h-11 w-11 items-center justify-center rounded-lg focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                        :class="isCartPage || isCheckoutPage
+                                ? 'bg-shop-primary-50 text-shop-primary-600'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            ">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        <span
+                            class="absolute -top-0.5 -right-0.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-shop-accent-500 px-1 text-xs font-semibold text-white">
+                            {{ cartQty }}
+                        </span>
+                    </Link>
+                </div>
+            </div>
+
+            <div v-show="showMobileSearch" class="pb-3 md:hidden">
+                <label for="searchMobileHeader" class="sr-only">Search products</label>
+                <div class="relative">
+                    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                        </svg>
+                    </span>
+                    <input id="searchMobileHeader" type="search" :value="isShopPage ? search : ''"
+                        placeholder="Search for products…"
+                        class="w-full rounded-lg border border-gray-300 bg-gray-50 py-2.5 pr-4 pl-10 text-sm focus:border-shop-primary-600 focus:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                        @input="handleSearchInput" />
+                </div>
+            </div>
+        </div>
+    </header>
+</template>
+
+
+
+
+3.9 Edit Shop.vue Page:
+-----------------------
+Edit resources/js/pages/shop/Shop.vue:
+--------------------------------------
+<script setup lang="ts">
+import { Head, Link } from '@inertiajs/vue3';
+import ShopCatalogToolbar from '@/components/shop/ShopCatalogToolbar.vue';
+import ShopFilterChips from '@/components/shop/ShopFilterChips.vue';
+import ShopFilters from '@/components/shop/ShopFilters.vue';
+import ShopPagination from '@/components/shop/ShopPagination.vue';
+import ShopProductCard from '@/components/shop/ShopProductCard.vue';
+import { useShopCatalog } from '@/composables/shop/useShopCatalog';
+import { home } from '@/routes';
+
+const { products, total, hasActiveFilters, clearFilters } = useShopCatalog();
+</script>
+
+<template>
+
+    <Head title="Shop">
+        <meta name="description"
+            content="Browse all products on ShopEase. Filter by category and price, sort, and search. Cash on Delivery across Bangladesh." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet" />
+    </Head>
+
+    <div class="border-b border-gray-200 bg-gray-50">
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-6 lg:px-8">
+            <h1 class="text-lg font-bold text-gray-900 md:text-xl">
+                Shop All Products
+            </h1>
+            <nav aria-label="Breadcrumb">
+                <ol class="flex flex-wrap items-center gap-1.5 text-sm text-gray-500">
+                    <li>
+                        <Link :href="home()" class="hover:text-shop-primary-600">Home</Link>
+                    </li>
+                    <li aria-hidden="true" class="text-gray-300">/</li>
+                    <li aria-current="page" class="font-medium text-gray-700">
+                        Shop
+                    </li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div v-if="total === 0 && !hasActiveFilters"
+        class="border-b border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900">
+        Storefront data is not loaded yet. Run
+        <code class="rounded bg-white px-2 py-1 font-mono text-xs">php artisan db:seed</code>
+        to populate the product catalog.
+    </div>
+
+    <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div class="lg:grid lg:grid-cols-[260px_1fr] lg:gap-8">
+            <ShopFilters />
+
+            <div>
+                <ShopCatalogToolbar />
+                <ShopFilterChips />
+
+                <div v-if="products.length > 0"
+                    class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+                    <ShopProductCard v-for="product in products" :key="product.id" :product="product" />
+                </div>
+
+                <div v-else class="py-16 text-center">
+                    <div
+                        class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 text-gray-400">
+                        <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900">
+                        No products found
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500">
+                        Try adjusting your filters or search.
+                    </p>
+                    <button v-if="hasActiveFilters" type="button"
+                        class="mt-4 rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-shop-primary-700"
+                        @click="clearFilters">
+                        Clear filters
+                    </button>
+                </div>
+
+                <ShopPagination />
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+3.10 Command Run:
+-----------------
+Then, Command: php arisan migrate:fresh --seed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
