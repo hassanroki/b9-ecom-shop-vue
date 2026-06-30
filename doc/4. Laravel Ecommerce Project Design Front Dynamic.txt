@@ -492,11 +492,564 @@ Step 2: Product Details Page Dynamic
 ----------------------------
 Edit app/Http/Controller/Storefront/ProductController.php:
 ----------------------------------------------------------
-ProductController
-ProductShow.vue
-ShopProductBreadcrumb.vue
-ShopProductTabs.vue
-ShopProductTabs.vue
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Models\Product;
+use App\Models\ProductImage;
+use App\Models\Review;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class ProductController extends Controller
+{
+    private const RELATED_PRODUCT_LIMIT = 4;
+
+    /**
+     * Display the product details page.
+     */
+    public function show(string $slug): Response|HttpResponse
+    {
+        $product = Product::query()
+            ->where('slug', $slug)
+            ->where('is_active', true)
+            ->with([
+                'category',
+                'images' => fn($query) => $query->orderBy('sort_order'),
+                'reviews' => fn($query) => $query
+                    ->where('is_approved', true)
+                    ->with('user')
+                    ->latest('approved_at'),
+            ])
+            ->withAvg(['reviews' => fn($query) => $query->where('is_approved', true)], 'rating')
+            ->withCount(['reviews' => fn($query) => $query->where('is_approved', true)])
+            ->first();
+
+        abort_if($product === null, 404);
+
+        return Inertia::render('shop/ProductShow', [
+            'product' => $this->mapProductDetail($product),
+            'relatedProducts' => $this->relatedProducts($product),
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     slug: string,
+     *     name: string,
+     *     category: string,
+     *     categoryHref: string,
+     *     price: float,
+     *     oldPrice: float|null,
+     *     img: string,
+     *     rating: float,
+     *     reviews: int,
+     *     inStock: bool,
+     *     tag: string|null,
+     *     summary: string,
+     *     description: list<string>,
+     *     features: list<string>,
+     *     images: list<array{full: string, thumb: string}>,
+     *     ratingBreakdown: list<array{stars: int, percent: int}>,
+     *     reviewList: list<array{name: string, rating: int, date: string, verified: bool, text: string}>
+     * }
+     */
+    private function mapProductDetail(Product $product): array
+    {
+        $primaryImage = $product->images->firstWhere('is_primary', true)
+            ?? $product->images->first();
+
+        return [
+            'id' => $product->id,
+            'slug' => $product->slug,
+            'name' => $product->name,
+            'category' => $product->category->name,
+            'categoryHref' => route('shop.index', ['category' => $product->category->name]),
+            'price' => (float) $product->price,
+            'oldPrice' => $product->compare_at_price !== null
+                ? (float) $product->compare_at_price
+                : null,
+            'img' => $primaryImage?->image_path ?? '',
+            'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
+            'reviews' => (int) $product->reviews_count,
+            'inStock' => $product->stock_status === 'in_stock',
+            'tag' => $this->productTag($product),
+            'summary' => $product->short_description ?? '',
+            'description' => $this->descriptionParagraphs($product->description),
+            'features' => [],
+            'images' => $this->mapImages($product->images),
+            'ratingBreakdown' => $this->ratingBreakdown($product->reviews),
+            'reviewList' => $this->mapReviews($product->reviews),
+        ];
+    }
+
+    /**
+     * @return list<array{
+     *     name: string,
+     *     slug: string,
+     *     price: float,
+     *     oldPrice: float|null,
+     *     img: string,
+     *     rating: float,
+     *     reviews: int,
+     *     inStock: bool,
+     *     tag: string|null
+     * }>
+     */
+    private function relatedProducts(Product $product): array
+    {
+        return Product::query()
+            ->where('is_active', true)
+            ->where('category_id', $product->category_id)
+            ->whereKeyNot($product->id)
+            ->with(['images' => fn($query) => $query->where('is_primary', true)])
+            ->withAvg(['reviews' => fn($query) => $query->where('is_approved', true)], 'rating')
+            ->withCount(['reviews' => fn($query) => $query->where('is_approved', true)])
+            ->inRandomOrder()
+            ->limit(self::RELATED_PRODUCT_LIMIT)
+            ->get()
+            ->map(function (Product $related): array {
+                $primaryImage = $related->images->first();
+
+                return [
+                    'id' => $related->id,
+                    'name' => $related->name,
+                    'slug' => $related->slug,
+                    'price' => (float) $related->price,
+                    'oldPrice' => $related->compare_at_price !== null
+                        ? (float) $related->compare_at_price
+                        : null,
+                    'img' => $primaryImage?->image_path ?? '',
+                    'rating' => round((float) ($related->reviews_avg_rating ?? 0), 1),
+                    'reviews' => (int) $related->reviews_count,
+                    'inStock' => $related->stock_status === 'in_stock',
+                    'tag' => $this->productTag($related),
+                ];
+            })
+            ->all();
+    }
+
+    private function productTag(Product $product): ?string
+    {
+        if ($product->is_best_seller) {
+            return 'Best Seller';
+        }
+
+        if ($product->is_featured) {
+            return 'New';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function descriptionParagraphs(?string $description): array
+    {
+        if ($description === null || trim($description) === '') {
+            return [];
+        }
+
+        return array_values(array_filter(
+            preg_split('/\R{2,}/', trim($description)) ?: [],
+            fn(string $paragraph): bool => trim($paragraph) !== '',
+        ));
+    }
+
+    /**
+     * @param  Collection<int, ProductImage>  $images
+     * @return list<array{full: string, thumb: string}>
+     */
+    private function mapImages($images): array
+    {
+        if ($images->isEmpty()) {
+            return [];
+        }
+
+        return $images
+            ->map(fn(ProductImage $image): array => [
+                'full' => $this->imageUrl($image->image_path, 900, 75),
+                'thumb' => $this->imageUrl($image->image_path, 200, 70),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, Review>  $reviews
+     * @return list<array{stars: int, percent: int}>
+     */
+    private function ratingBreakdown($reviews): array
+    {
+        $total = $reviews->count();
+
+        return collect(range(5, 1))
+            ->map(function (int $stars) use ($reviews, $total): array {
+                $count = $reviews->where('rating', $stars)->count();
+
+                return [
+                    'stars' => $stars,
+                    'percent' => $total > 0 ? (int) round(($count / $total) * 100) : 0,
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, Review>  $reviews
+     * @return list<array{name: string, rating: int, date: string, verified: bool, text: string}>
+     */
+    private function mapReviews($reviews): array
+    {
+        return $reviews
+            ->map(fn(Review $review): array => [
+                'name' => $review->user->name,
+                'rating' => $review->rating,
+                'date' => $review->approved_at?->format('j M Y') ?? $review->created_at->format('j M Y'),
+                'verified' => $review->order_id !== null,
+                'text' => $review->comment ?? '',
+            ])
+            ->all();
+    }
+
+    private function imageUrl(string $path, int $width, int $quality = 75): string
+    {
+        if (Str::startsWith($path, ['http://', 'https://'])) {
+            return $path;
+        }
+
+        return "https://images.unsplash.com/{$path}?auto=format&fit=crop&w={$width}&q={$quality}";
+    }
+}
+
+
+
+
+2.2 Edit ProductShow.vue Page:
+------------------------------
+Edit resources/js/pages/shop/ProductShow.vue:
+---------------------------------------------
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { Head, usePage } from '@inertiajs/vue3';
+import ShopMobileProductBar from '@/components/shop/ShopMobileProductBar.vue';
+import ShopProductBreadcrumb from '@/components/shop/ShopProductBreadcrumb.vue';
+import ShopProductGallery from '@/components/shop/ShopProductGallery.vue';
+import ShopProductInfo from '@/components/shop/ShopProductInfo.vue';
+import ShopProductTabs from '@/components/shop/ShopProductTabs.vue';
+import ShopRelatedProducts from '@/components/shop/ShopRelatedProducts.vue';
+import type { ShopProduct, ShopProductDetail } from '@/types/shop';
+
+const page = usePage();
+
+const product = computed(
+    () => page.props.product as ShopProductDetail | undefined,
+);
+const relatedProducts = computed(
+    () => (page.props.relatedProducts as ShopProduct[] | undefined) ?? [],
+);
+
+const quantity = ref(1);
+</script>
+
+<template>
+    <template v-if="product">
+
+        <Head :title="product.name">
+            <meta name="description" :content="`${product.name}. ${product.summary}`" />
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+                rel="stylesheet" />
+        </Head>
+
+        <div class="pb-24 lg:pb-0">
+            <ShopProductBreadcrumb :category="product.category" :category-href="product.categoryHref"
+                :product-name="product.name" />
+
+            <section class="mx-auto max-w-7xl px-4 py-8 sm:px-6 md:py-12 lg:px-8">
+                <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+                    <ShopProductGallery :images="product.images" :alt="product.name" />
+                    <ShopProductInfo :product="product" v-model:quantity="quantity" />
+                </div>
+            </section>
+
+            <ShopProductTabs :product="product" />
+            <ShopRelatedProducts v-if="relatedProducts.length > 0" :products="relatedProducts" />
+        </div>
+
+        <ShopMobileProductBar :product="product" v-model:quantity="quantity" />
+    </template>
+</template>
+
+
+
+
+
+2.3 Edit ShopProductBreadcrumb.vue Components:
+----------------------------------------------
+Edit resources/js/components/shop/ShopProductBreadcrumb.vue:
+------------------------------------------------------------
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { home } from '@/routes';
+
+const { category, categoryHref, productName } = defineProps<{
+    category: string;
+    categoryHref: string;
+    productName: string;
+}>();
+</script>
+
+<template>
+    <nav aria-label="Breadcrumb" class="border-b border-gray-200 bg-gray-50">
+        <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+            <ol class="flex flex-wrap items-center gap-1.5 text-sm text-gray-500">
+                <li>
+                    <Link :href="home()" class="hover:text-shop-primary-600">Home</Link>
+                </li>
+                <li aria-hidden="true" class="text-gray-300">/</li>
+                <li>
+                    <a :href="categoryHref" class="hover:text-shop-primary-600">{{ category }}</a>
+                </li>
+                <li aria-hidden="true" class="text-gray-300">/</li>
+                <li aria-current="page" class="font-medium text-gray-900">
+                    {{ productName }}
+                </li>
+            </ol>
+        </div>
+    </nav>
+</template>
+
+
+
+
+2.4 Edit ShopProductTabs.vue Components:
+----------------------------------------
+Edit resources/js/components/shop/ShopProductTabs.vue:
+------------------------------------------------------
+<script setup lang="ts">
+import { ref } from 'vue';
+import ShopStarRating from '@/components/shop/ShopStarRating.vue';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import type { ShopProductDetail } from '@/types/shop';
+
+const { product } = defineProps<{
+    product: ShopProductDetail;
+}>();
+
+const { showToast } = useShopUi();
+
+const activeTab = ref<'description' | 'reviews'>('description');
+const selectedRating = ref(0);
+const hoverRating = ref(0);
+const reviewName = ref('');
+const reviewText = ref('');
+
+function activateTab(tab: 'description' | 'reviews'): void {
+    activeTab.value = tab;
+}
+
+function displayRating(): number {
+    return hoverRating.value || selectedRating.value;
+}
+
+function setRating(value: number): void {
+    selectedRating.value = value;
+}
+
+function submitReview(event: Event): void {
+    event.preventDefault();
+
+    if (!selectedRating.value) {
+        showToast('Please select a star rating');
+
+        return;
+    }
+
+    showToast('Thanks! Your review is pending approval.');
+    reviewName.value = '';
+    reviewText.value = '';
+    selectedRating.value = 0;
+    hoverRating.value = 0;
+}
+</script>
+
+<template>
+    <section class="border-t border-gray-200 bg-gray-50">
+        <div class="mx-auto max-w-7xl px-4 py-10 sm:px-6 md:py-14 lg:px-8">
+            <div class="border-b border-gray-200">
+                <div class="flex gap-6" role="tablist" aria-label="Product information">
+                    <button id="tab-desc" role="tab" :aria-selected="activeTab === 'description'"
+                        aria-controls="panel-desc" class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'description'
+                            ? 'border-shop-primary-600 text-shop-primary-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-900'
+                            " @click="activateTab('description')">
+                        Description
+                    </button>
+                    <button id="tab-rev" role="tab" :aria-selected="activeTab === 'reviews'" aria-controls="panel-rev"
+                        class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'reviews'
+                            ? 'border-shop-primary-600 text-shop-primary-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-900'
+                            " @click="activateTab('reviews')">
+                        Reviews
+                        <span class="text-gray-400">({{ product.reviews }})</span>
+                    </button>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'description'" id="panel-desc" role="tabpanel" aria-labelledby="tab-desc"
+                class="pt-6">
+                <div class="max-w-prose space-y-4 text-sm leading-relaxed text-gray-600 md:text-base">
+                    <p v-for="(paragraph, index) in product.description" :key="index">
+                        {{ paragraph }}
+                    </p>
+                    <h3 v-if="product.features.length > 0" class="pt-2 text-base font-semibold text-gray-900">
+                        Key Features
+                    </h3>
+                    <ul v-if="product.features.length > 0" class="list-disc space-y-1.5 pl-5">
+                        <li v-for="(feature, index) in product.features" :key="index">
+                            {{ feature }}
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'reviews'" id="panel-rev" role="tabpanel" aria-labelledby="tab-rev" class="pt-6"
+                tabindex="-1">
+                <div id="reviews" class="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                    <div class="lg:col-span-1">
+                        <div class="rounded-xl border border-gray-200 bg-white p-6 text-center">
+                            <p class="text-5xl font-bold text-gray-900">
+                                {{ product.rating }}
+                            </p>
+                            <div class="mt-2 flex justify-center">
+                                <ShopStarRating :rating="product.rating" size="lg" />
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">
+                                Based on {{ product.reviews }} reviews
+                            </p>
+                        </div>
+
+                        <div class="mt-4 space-y-2">
+                            <div v-for="item in product.ratingBreakdown" :key="item.stars"
+                                class="flex items-center gap-2 text-sm">
+                                <span class="w-8 shrink-0 text-gray-600">{{ item.stars }} ★</span>
+                                <div class="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
+                                    <div class="h-full rounded-full bg-shop-accent-500" :style="{
+                                        width: `${item.percent}%`,
+                                    }" />
+                                </div>
+                                <span class="w-9 shrink-0 text-right text-gray-400">{{ item.percent }}%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <div class="space-y-6">
+                            <div v-for="(review, index) in product.reviewList" :key="index"
+                                class="rounded-xl border border-gray-200 bg-white p-5">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-3">
+                                        <span
+                                            class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-shop-primary-50 text-sm font-semibold text-shop-primary-600">{{
+                                                review.name.charAt(0) }}</span>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-900">
+                                                {{ review.name }}
+                                                <span v-if="review.verified"
+                                                    class="ml-1 align-middle rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">Verified</span>
+                                            </p>
+                                            <div class="mt-0.5">
+                                                <ShopStarRating :rating="review.rating" size="sm" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs text-gray-400">{{
+                                        review.date
+                                    }}</span>
+                                </div>
+                                <p class="mt-3 text-sm leading-relaxed text-gray-600">
+                                    {{ review.text }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="mt-10 rounded-xl border border-gray-200 bg-white p-6">
+                            <h3 class="text-lg font-semibold text-gray-900">
+                                Write a review
+                            </h3>
+                            <p class="mt-1 text-sm text-gray-500">
+                                Your review will appear after approval by our
+                                team.
+                            </p>
+                            <form class="mt-4 space-y-4" @submit="submitReview">
+                                <div>
+                                    <span class="mb-1.5 block text-sm font-medium text-gray-700">Your rating</span>
+                                    <div class="flex gap-1" role="radiogroup" aria-label="Your rating"
+                                        @mouseleave="hoverRating = 0">
+                                        <button v-for="star in 5" :key="star" type="button" role="radio" :aria-checked="selectedRating === star
+                                            " :aria-label="`${star} star`"
+                                            class="rounded p-0.5 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                            @click="setRating(star)" @mouseenter="hoverRating = star">
+                                            <svg class="h-7 w-7" :class="star <= displayRating()
+                                                ? 'text-shop-accent-500'
+                                                : 'text-gray-300'
+                                                " fill="currentColor" viewBox="0 0 20 20">
+                                                <path
+                                                    d="M9.05 2.927c.3-.921 1.6-.921 1.9 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.368 2.447a1 1 0 00-.364 1.118l1.287 3.957c.3.922-.755 1.688-1.539 1.118l-3.366-2.447a1 1 0 00-1.176 0l-3.366 2.447c-.783.57-1.838-.196-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.354 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.951-.69l1.286-3.957z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="reviewName"
+                                        class="mb-1.5 block text-sm font-medium text-gray-700">Name</label>
+                                    <input id="reviewName" v-model="reviewName" type="text" required
+                                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                        placeholder="Your name" />
+                                </div>
+                                <div>
+                                    <label for="reviewText"
+                                        class="mb-1.5 block text-sm font-medium text-gray-700">Review</label>
+                                    <textarea id="reviewText" v-model="reviewText" rows="4" required
+                                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                        placeholder="Share your experience with this product…" />
+                                </div>
+                                <button type="submit"
+                                    class="rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none">
+                                    Submit Review
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</template>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
