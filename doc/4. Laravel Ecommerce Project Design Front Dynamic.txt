@@ -2670,172 +2670,6 @@ class CartService
 
 
 
-4.2.2 Edit app/Servics/WishlistService.php:
--------------------------------------------
-<?php
-
-namespace App\Services;
-
-use App\Models\Product;
-use App\Models\Wishlist;
-use Illuminate\Support\Facades\Auth;
-
-class WishlistService
-{
-    /**
-     * Total saved items for the authenticated user.
-     */
-    public function count(): int
-    {
-        if (! Auth::id()) {
-            return 0;
-        }
-
-        return Wishlist::where('user_id', Auth::id())->count();
-    }
-
-    /**
-     * Product IDs in the authenticated user's wishlist.
-     *
-     * @return list<int>
-     */
-    public function productIds(): array
-    {
-        if (! Auth::id()) {
-            return [];
-        }
-
-        return Wishlist::where('user_id', Auth::id())
-            ->pluck('product_id')
-            ->map(fn($id): int => (int) $id)
-            ->values()
-            ->all();
-    }
-
-    /**
-     * Full wishlist items resolved with product details.
-     *
-     * @return list<array{
-     *     id: int,
-     *     name: string,
-     *     slug: string,
-     *     price: float,
-     *     oldPrice: float|null,
-     *     img: string,
-     *     rating: float,
-     *     reviews: int,
-     *     inStock: bool
-     * }>
-     */
-    public function items(): array
-    {
-        if (! Auth::id()) {
-            return [];
-        }
-
-        $productIds = Wishlist::where('user_id', Auth::id())
-            ->latest()
-            ->pluck('product_id')
-            ->map(fn($id): int => (int) $id)
-            ->all();
-
-        if ($productIds === []) {
-            return [];
-        }
-
-        $products = Product::query()
-            ->whereIn('id', $productIds)
-            ->where('is_active', true)
-            ->with(['images' => fn($query) => $query->where('is_primary', true)])
-            ->withAvg(['reviews' => fn($query) => $query->where('is_approved', true)], 'rating')
-            ->withCount(['reviews' => fn($query) => $query->where('is_approved', true)])
-            ->get()
-            ->keyBy('id');
-
-        return collect($productIds)
-            ->map(fn(int $productId): ?array => ($product = $products->get($productId))
-                ? $this->mapProduct($product)
-                : null)
-            ->filter()
-            ->values()
-            ->all();
-    }
-
-    /**
-     * Add a product to the wishlist (no-op if already saved).
-     */
-    public function add(int $productId): void
-    {
-        $userId = Auth::id();
-
-        if (! $userId) {
-            return;
-        }
-
-        Wishlist::firstOrCreate([
-            'user_id' => $userId,
-            'product_id' => $productId,
-        ]);
-    }
-
-    /**
-     * Remove a product from the wishlist.
-     */
-    public function remove(int $productId): void
-    {
-        if (! Auth::id()) {
-            return;
-        }
-
-        Wishlist::where('user_id', Auth::id())
-            ->where('product_id', $productId)
-            ->delete();
-    }
-
-    /**
-     * Remove all items from the wishlist.
-     */
-    public function clear(): void
-    {
-        if (! Auth::id()) {
-            return;
-        }
-
-        Wishlist::where('user_id', Auth::id())->delete();
-    }
-
-    /**
-     * @return array{
-     *     id: int,
-     *     name: string,
-     *     slug: string,
-     *     price: float,
-     *     oldPrice: float|null,
-     *     img: string,
-     *     rating: float,
-     *     reviews: int,
-     *     inStock: bool
-     * }
-     */
-    private function mapProduct(Product $product): array
-    {
-        $primaryImage = $product->images->first();
-
-        return [
-            'id' => $product->id,
-            'name' => $product->name,
-            'slug' => $product->slug,
-            'price' => (float) $product->price,
-            'oldPrice' => $product->compare_at_price !== null
-                ? (float) $product->compare_at_price
-                : null,
-            'img' => $primaryImage?->image_path ?? '',
-            'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
-            'reviews' => (int) $product->reviews_count,
-            'inStock' => $product->stock_status === 'in_stock',
-        ];
-    }
-}
 
 
 
@@ -4791,6 +4625,513 @@ function handleSubmit(): void {
         </div>
     </div>
 </template>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ste 6: Wish List
+-----------------
+6. CreateWishlistService.php:
+-----------------------------
+6.1 Edit app/Servics/WishlistService.php:
+-------------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Product;
+use App\Models\Wishlist;
+use Illuminate\Support\Facades\Auth;
+
+class WishlistService
+{
+    /**
+     * Total saved items for the authenticated user.
+     */
+    public function count(): int
+    {
+        if (! Auth::id()) {
+            return 0;
+        }
+
+        return Wishlist::where('user_id', Auth::id())->count();
+    }
+
+    /**
+     * Product IDs in the authenticated user's wishlist.
+     *
+     * @return list<int>
+     */
+    public function productIds(): array
+    {
+        if (! Auth::id()) {
+            return [];
+        }
+
+        return Wishlist::where('user_id', Auth::id())
+            ->pluck('product_id')
+            ->map(fn($id): int => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Full wishlist items resolved with product details.
+     *
+     * @return list<array{
+     *     id: int,
+     *     name: string,
+     *     slug: string,
+     *     price: float,
+     *     oldPrice: float|null,
+     *     img: string,
+     *     rating: float,
+     *     reviews: int,
+     *     inStock: bool
+     * }>
+     */
+    public function items(): array
+    {
+        if (! Auth::id()) {
+            return [];
+        }
+
+        $productIds = Wishlist::where('user_id', Auth::id())
+            ->latest()
+            ->pluck('product_id')
+            ->map(fn($id): int => (int) $id)
+            ->all();
+
+        if ($productIds === []) {
+            return [];
+        }
+
+        $products = Product::query()
+            ->whereIn('id', $productIds)
+            ->where('is_active', true)
+            ->with(['images' => fn($query) => $query->where('is_primary', true)])
+            ->withAvg(['reviews' => fn($query) => $query->where('is_approved', true)], 'rating')
+            ->withCount(['reviews' => fn($query) => $query->where('is_approved', true)])
+            ->get()
+            ->keyBy('id');
+
+        return collect($productIds)
+            ->map(fn(int $productId): ?array => ($product = $products->get($productId))
+                ? $this->mapProduct($product)
+                : null)
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Add a product to the wishlist (no-op if already saved).
+     */
+    public function add(int $productId): void
+    {
+        $userId = Auth::id();
+
+        if (! $userId) {
+            return;
+        }
+
+        Wishlist::firstOrCreate([
+            'user_id' => $userId,
+            'product_id' => $productId,
+        ]);
+    }
+
+    /**
+     * Remove a product from the wishlist.
+     */
+    public function remove(int $productId): void
+    {
+        if (! Auth::id()) {
+            return;
+        }
+
+        Wishlist::where('user_id', Auth::id())
+            ->where('product_id', $productId)
+            ->delete();
+    }
+
+    /**
+     * Remove all items from the wishlist.
+     */
+    public function clear(): void
+    {
+        if (! Auth::id()) {
+            return;
+        }
+
+        Wishlist::where('user_id', Auth::id())->delete();
+    }
+
+    /**
+     * @return array{
+     *     id: int,
+     *     name: string,
+     *     slug: string,
+     *     price: float,
+     *     oldPrice: float|null,
+     *     img: string,
+     *     rating: float,
+     *     reviews: int,
+     *     inStock: bool
+     * }
+     */
+    private function mapProduct(Product $product): array
+    {
+        $primaryImage = $product->images->first();
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'price' => (float) $product->price,
+            'oldPrice' => $product->compare_at_price !== null
+                ? (float) $product->compare_at_price
+                : null,
+            'img' => $primaryImage?->image_path ?? '',
+            'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
+            'reviews' => (int) $product->reviews_count,
+            'inStock' => $product->stock_status === 'in_stock',
+        ];
+    }
+}
+
+
+
+
+
+
+
+
+6.2 Edit app/Http/Controllers/Storefront/WishlistController.php:
+----------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Models\Product;
+use App\Services\WishlistService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class WishlistController extends Controller
+{
+    public function __construct(private readonly WishlistService $wishlistService) {}
+
+    /**
+     * Display the wishlist page.
+     */
+    public function index(): Response
+    {
+        return Inertia::render('shop/Wishlist');
+    }
+
+    /**
+     * Add a product to the wishlist.
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+        ]);
+
+        $product = Product::where('id', $data['product_id'])
+            ->where('is_active', true)
+            ->first();
+
+        if (! $product) {
+            return back()->with('error', 'This product is not available.');
+        }
+
+        $this->wishlistService->add($data['product_id']);
+
+        return back();
+    }
+
+    /**
+     * Remove a product from the wishlist.
+     */
+    public function destroy(int $productId): RedirectResponse
+    {
+        $this->wishlistService->remove($productId);
+
+        return back();
+    }
+
+    /**
+     * Remove all items from the wishlist.
+     */
+    public function clear(): RedirectResponse
+    {
+        $this->wishlistService->clear();
+
+        return back();
+    }
+}
+
+
+
+
+
+
+
+6.3 Edit resources/js/components/shop/ShopWishlistCard.vue:
+----------------------------------------------------------
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import ShopStarRating from '@/components/shop/ShopStarRating.vue';
+import { formatTaka } from '@/lib/shop/currency';
+import { productShowUrl } from '@/lib/shop/product';
+import type { ShopWishlistItem } from '@/types/shop';
+
+const { item } = defineProps<{
+    item: ShopWishlistItem;
+}>();
+
+const emit = defineEmits<{
+    remove: [productId: number];
+    addToCart: [productId: number];
+}>();
+
+const imgUrl = `https://images.unsplash.com/${item.img}?auto=format&fit=crop&w=600&q=70`;
+</script>
+
+<template>
+    <article
+        class="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition duration-300 ease-out hover:-translate-y-1 hover:border-shop-primary-600 hover:shadow-xl">
+        <div class="relative aspect-square overflow-hidden bg-gray-100">
+            <Link :href="productShowUrl(item)" :aria-label="`View ${item.name}`" class="block h-full w-full">
+                <img :src="imgUrl" :alt="item.name" loading="lazy"
+                    class="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-110"
+                    :class="{ grayscale: !item.inStock }" />
+            </Link>
+            <div v-if="!item.inStock"
+                class="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/30">
+                <span
+                    class="rounded-md bg-gray-900/85 px-4 py-1.5 text-xs font-semibold tracking-wide text-white uppercase shadow-md">Stock
+                    Out</span>
+            </div>
+            <div class="absolute top-2 left-2">
+                <span v-if="item.inStock"
+                    class="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 shadow-sm">In
+                    Stock</span>
+            </div>
+            <button type="button" :aria-label="`Remove ${item.name} from wishlist`"
+                class="absolute top-2 right-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm transition duration-200 hover:scale-110 hover:bg-white active:scale-95 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                @click="emit('remove', item.id)">
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                        d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                </svg>
+            </button>
+        </div>
+        <div class="flex flex-1 flex-col p-3 md:p-4">
+            <Link :href="productShowUrl(item)" class="block">
+                <h3
+                    class="line-clamp-2 text-sm font-medium text-gray-900 transition-colors duration-200 group-hover:text-shop-primary-600 md:text-base">
+                    {{ item.name }}
+                </h3>
+            </Link>
+            <div class="mt-1.5 flex items-center gap-1">
+                <ShopStarRating :rating="item.rating" size="sm" />
+                <span class="text-xs text-gray-400">({{ item.reviews }})</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+                <span class="text-base font-semibold text-shop-primary-600 md:text-lg">{{ formatTaka(item.price)
+                    }}</span>
+                <span v-if="item.oldPrice" class="text-xs text-gray-400 line-through">{{ formatTaka(item.oldPrice)
+                    }}</span>
+            </div>
+            <div class="mt-auto pt-3">
+                <button v-if="item.inStock" type="button"
+                    class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-shop-primary-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                    @click="emit('addToCart', item.id)">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Add to Cart
+                </button>
+                <button v-else type="button" disabled aria-disabled="true"
+                    class="w-full cursor-not-allowed rounded-lg bg-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-400">
+                    Stock Out
+                </button>
+            </div>
+        </div>
+    </article>
+</template>
+
+
+
+
+
+
+
+
+6.4 Edit resources/js/pages/shop/Wishlist.vue:
+-----------------------------------------------
+<script setup lang="ts">
+import { Head, Link } from '@inertiajs/vue3';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import ShopWishlistCard from '@/components/shop/ShopWishlistCard.vue';
+import { useShopCart } from '@/composables/shop/useShopCart';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import { useShopWishlist } from '@/composables/shop/useShopWishlist';
+import shop from '@/routes/shop';
+
+const { addToCart } = useShopCart();
+const { showToast } = useShopUi();
+const {
+    wishlist,
+    wishCount,
+    isAuthenticated,
+    clearWishlist,
+    removeFromWishlist,
+    addAllToCart,
+} = useShopWishlist();
+
+function handleRemove(productId: number): void {
+    const item = wishlist.value.find((i) => i.id === productId);
+    removeFromWishlist(productId);
+
+    if (item) {
+        showToast(`Removed from wishlist: ${item.name}`);
+    }
+}
+
+function handleAddToCart(productId: number): void {
+    const item = wishlist.value.find((i) => i.id === productId);
+
+    if (!item) {
+        return;
+    }
+
+    addToCart(productId, 1, false);
+    showToast(`Added to cart: ${item.name}`);
+}
+
+function handleClearWishlist(): void {
+    clearWishlist();
+    showToast('Wishlist cleared');
+}
+
+function handleAddAllToCart(): void {
+    addAllToCart(showToast);
+}
+</script>
+
+<template>
+
+    <Head title="My Wishlist">
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet" />
+    </Head>
+
+    <div class="py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb :items="[{ label: 'Wishlist' }]" />
+
+            <div v-if="!isAuthenticated" class="py-16 text-center">
+                <div
+                    class="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-red-400">
+                    <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                </div>
+                <h2 class="text-lg font-semibold text-gray-900">
+                    Sign in to view your wishlist
+                </h2>
+                <p class="mt-1 text-sm text-gray-500">
+                    Save products you love and come back to them anytime.
+                </p>
+                <Link :href="shop.index()"
+                    class="mt-5 inline-block rounded-lg bg-shop-primary-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700">
+                    Browse Products
+                </Link>
+            </div>
+
+            <template v-else>
+                <div v-if="wishCount > 0" class="mb-6 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">
+                            My Wishlist
+                        </h1>
+                        <p class="mt-1 text-sm text-gray-500">
+                            {{ wishCount }} items saved
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button"
+                            class="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                            @click="handleClearWishlist">
+                            Clear all
+                        </button>
+                        <button type="button"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-shop-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                            @click="handleAddAllToCart">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            Add all to cart
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="wishCount > 0" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:gap-6 lg:grid-cols-4">
+                    <ShopWishlistCard v-for="item in wishlist" :key="item.id" :item="item" @remove="handleRemove"
+                        @add-to-cart="handleAddToCart" />
+                </div>
+
+                <div v-else class="py-16 text-center">
+                    <div
+                        class="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-red-400">
+                        <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                    </div>
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        Your wishlist is empty
+                    </h2>
+                    <p class="mt-1 text-sm text-gray-500">
+                        Tap the heart on any product to save it here for later.
+                    </p>
+                    <Link :href="shop.index()"
+                        class="mt-5 inline-block rounded-lg bg-shop-primary-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700">
+                        Browse Products
+                    </Link>
+                </div>
+            </template>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
 
 
 
