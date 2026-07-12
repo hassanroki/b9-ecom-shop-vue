@@ -27,7 +27,7 @@ class CategoryController extends Controller
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get()
-            ->map(fn (Category $category): array => $this->categoryPayload($category));
+            ->map(fn(Category $category): array => $this->categoryPayload($category));
 
         return Inertia::render('admin/categories/Index', [
             'categories' => $categories,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import RichTextContent from '@/components/RichTextContent.vue';
 import ShopStarRating from '@/components/shop/ShopStarRating.vue';
 import { useShopUi } from '@/composables/shop/useShopUi';
 import type { ShopProductDetail } from '@/types/shop';
@@ -52,15 +53,15 @@ function submitReview(event: Event): void {
                 <div class="flex gap-6" role="tablist" aria-label="Product information">
                     <button id="tab-desc" role="tab" :aria-selected="activeTab === 'description'"
                         aria-controls="panel-desc" class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'description'
-                            ? 'border-shop-primary-600 text-shop-primary-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-900'
+                                ? 'border-shop-primary-600 text-shop-primary-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-900'
                             " @click="activateTab('description')">
                         Description
                     </button>
                     <button id="tab-rev" role="tab" :aria-selected="activeTab === 'reviews'" aria-controls="panel-rev"
                         class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'reviews'
-                            ? 'border-shop-primary-600 text-shop-primary-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-900'
+                                ? 'border-shop-primary-600 text-shop-primary-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-900'
                             " @click="activateTab('reviews')">
                         Reviews
                         <span class="text-gray-400">({{ product.reviews }})</span>
@@ -70,19 +71,16 @@ function submitReview(event: Event): void {
 
             <div v-show="activeTab === 'description'" id="panel-desc" role="tabpanel" aria-labelledby="tab-desc"
                 class="pt-6">
-                <div class="max-w-prose space-y-4 text-sm leading-relaxed text-gray-600 md:text-base">
-                    <p v-for="(paragraph, index) in product.description" :key="index">
-                        {{ paragraph }}
-                    </p>
-                    <h3 v-if="product.features.length > 0" class="pt-2 text-base font-semibold text-gray-900">
-                        Key Features
-                    </h3>
-                    <ul v-if="product.features.length > 0" class="list-disc space-y-1.5 pl-5">
-                        <li v-for="(feature, index) in product.features" :key="index">
-                            {{ feature }}
-                        </li>
-                    </ul>
-                </div>
+                <RichTextContent :html="product.description" class="max-w-prose text-gray-600 md:text-base" />
+                <h3 v-if="product.features.length > 0" class="pt-2 text-base font-semibold text-gray-900">
+                    Key Features
+                </h3>
+                <ul v-if="product.features.length > 0"
+                    class="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-gray-600 md:text-base">
+                    <li v-for="(feature, index) in product.features" :key="index">
+                        {{ feature }}
+                    </li>
+                </ul>
             </div>
 
             <div v-show="activeTab === 'reviews'" id="panel-rev" role="tabpanel" aria-labelledby="tab-rev" class="pt-6"
@@ -123,7 +121,7 @@ function submitReview(event: Event): void {
                                     <div class="flex items-center gap-3">
                                         <span
                                             class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-shop-primary-50 text-sm font-semibold text-shop-primary-600">{{
-                                                review.name.charAt(0) }}</span>
+                                            review.name.charAt(0) }}</span>
                                         <div>
                                             <p class="text-sm font-semibold text-gray-900">
                                                 {{ review.name }}
@@ -137,7 +135,7 @@ function submitReview(event: Event): void {
                                     </div>
                                     <span class="text-xs text-gray-400">{{
                                         review.date
-                                    }}</span>
+                                        }}</span>
                                 </div>
                                 <p class="mt-3 text-sm leading-relaxed text-gray-600">
                                     {{ review.text }}
@@ -163,8 +161,8 @@ function submitReview(event: Event): void {
                                             class="rounded p-0.5 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                             @click="setRating(star)" @mouseenter="hoverRating = star">
                                             <svg class="h-7 w-7" :class="star <= displayRating()
-                                                ? 'text-shop-accent-500'
-                                                : 'text-gray-300'
+                                                    ? 'text-shop-accent-500'
+                                                    : 'text-gray-300'
                                                 " fill="currentColor" viewBox="0 0 20 20">
                                                 <path
                                                     d="M9.05 2.927c.3-.921 1.6-.921 1.9 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.368 2.447a1 1 0 00-.364 1.118l1.287 3.957c.3.922-.755 1.688-1.539 1.118l-3.366-2.447a1 1 0 00-1.176 0l-3.366 2.447c-.783.57-1.838-.196-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.354 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.951-.69l1.286-3.957z" />
