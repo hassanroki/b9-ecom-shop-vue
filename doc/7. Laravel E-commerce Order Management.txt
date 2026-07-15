@@ -5,12 +5,137 @@
 --------------------
 Edit app/Models/Order.php:
 --------------------------
+<?php
+
+namespace App\Models;
+
+use Database\Factories\OrderFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+#[Fillable([
+    'order_number',
+    'user_id',
+    'customer_name',
+    'phone',
+    'email',
+    'district',
+    'area',
+    'address',
+    'notes',
+    'subtotal',
+    'delivery_charge',
+    'total',
+    'payment_method',
+    'payment_status',
+    'status',
+    'placed_at',
+])]
+class Order extends Model
+{
+    /** @use HasFactory<OrderFactory> */
+    use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'subtotal' => 'decimal:2',
+            'delivery_charge' => 'decimal:2',
+            'total' => 'decimal:2',
+            'placed_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'delivery_charge' => 0,
+        'payment_status' => 'pending',
+        'status' => 'pending',
+    ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(OrderStatusHistory::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+}
+
+
 
 
 2. Edit Order Item Model:
 --------------------
 Edit app/Models/OrderItem.php:
 ------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'order_id',
+    'product_id',
+    'product_name',
+    'unit_price',
+    'quantity',
+    'line_total',
+])]
+class OrderItem extends Model
+{
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'unit_price' => 'decimal:2',
+            'quantity' => 'integer',
+            'line_total' => 'decimal:2',
+        ];
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+
 
 
 
@@ -18,6 +143,47 @@ Edit app/Models/OrderItem.php:
 --------------------------------
 Edit app/Models/OrderStatusHistory.php:
 ---------------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'order_id',
+    'status',
+    'note',
+    'changed_by',
+    'created_at',
+])]
+class OrderStatusHistory extends Model
+{
+    public const UPDATED_AT = null;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'created_at' => 'datetime',
+        ];
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function changedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'changed_by');
+    }
+}
+
+
 
 
 
@@ -25,30 +191,1860 @@ Edit app/Models/OrderStatusHistory.php:
 ----------------------
 Edit app/Services/OrderService.php:
 -----------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Order;
+use App\Models\OrderStatusHistory;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+
+class OrderService
+{
+    public function __construct(private readonly CartService $cartService) {}
+
+    /**
+     * Calculate the delivery charge for a given district.
+     */
+    public function deliveryChargeForDistrict(string $district): float
+    {
+        $delivery = config('shop.delivery');
+
+        return $district === $delivery['dhaka_district']
+            ? (float) $delivery['inside_dhaka']
+            : (float) $delivery['outside_dhaka'];
+    }
+
+    /**
+     * Place a Cash on Delivery order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeCodOrder(array $shipping): Order
+    {
+        $items = $this->cartService->items();
+
+        if ($items === []) {
+            throw ValidationException::withMessages([
+                'cart' => 'Your cart is empty.',
+            ]);
+        }
+
+        $outOfStock = collect($items)->first(fn(array $item): bool => ! $item['inStock']);
+
+        if ($outOfStock !== null) {
+            throw ValidationException::withMessages([
+                'cart' => "{$outOfStock['name']} is no longer available.",
+            ]);
+        }
+
+        $subtotal = collect($items)->sum(
+            fn(array $item): float => $item['price'] * $item['qty'],
+        );
+
+        $deliveryCharge = $this->deliveryChargeForDistrict($shipping['district']);
+        $total = $subtotal + $deliveryCharge;
+
+        return DB::transaction(function () use ($shipping, $items, $subtotal, $deliveryCharge, $total): Order {
+            $order = Order::create([
+                'order_number' => $this->generateOrderNumber(),
+                'user_id' => Auth::id(),
+                'customer_name' => $shipping['customer_name'],
+                'phone' => $shipping['phone'],
+                'email' => $shipping['email'],
+                'district' => $shipping['district'],
+                'area' => $shipping['area'],
+                'address' => $shipping['address'],
+                'notes' => $shipping['notes'] ?? null,
+                'subtotal' => $subtotal,
+                'delivery_charge' => $deliveryCharge,
+                'total' => $total,
+                'payment_method' => 'cod',
+                'payment_status' => 'pending',
+                'status' => 'pending',
+                'placed_at' => now(),
+            ]);
+
+            foreach ($items as $item) {
+                $lineTotal = $item['price'] * $item['qty'];
+
+                $order->items()->create([
+                    'product_id' => $item['productId'],
+                    'product_name' => $item['name'],
+                    'unit_price' => $item['price'],
+                    'quantity' => $item['qty'],
+                    'line_total' => $lineTotal,
+                ]);
+            }
+
+            OrderStatusHistory::create([
+                'order_id' => $order->id,
+                'status' => 'pending',
+                'note' => 'Order placed via Cash on Delivery.',
+                'changed_by' => Auth::id(),
+            ]);
+
+            $this->cartService->clear();
+
+            return $order;
+        });
+    }
+
+    /**
+     * Update order status and payment status from the admin panel.
+     *
+     * @param  array{
+     *     status: string,
+     *     payment_status: string,
+     *     note?: string|null,
+     * }  $data
+     */
+    public function updateFromAdmin(Order $order, array $data, ?int $changedBy = null): Order
+    {
+        $statusChanged = $order->status !== $data['status'];
+        $paymentStatusChanged = $order->payment_status !== $data['payment_status'];
+        $note = filled($data['note'] ?? null) ? (string) $data['note'] : null;
+
+        if (! $statusChanged && ! $paymentStatusChanged && $note === null) {
+            return $order;
+        }
+
+        return DB::transaction(function () use ($order, $data, $changedBy, $statusChanged, $paymentStatusChanged, $note): Order {
+            $order->update([
+                'status' => $data['status'],
+                'payment_status' => $data['payment_status'],
+            ]);
+
+            if ($statusChanged || $paymentStatusChanged || $note !== null) {
+                OrderStatusHistory::create([
+                    'order_id' => $order->id,
+                    'status' => $data['status'],
+                    'note' => $note ?? $this->adminStatusChangeNote($statusChanged, $paymentStatusChanged, $data),
+                    'changed_by' => $changedBy,
+                    'created_at' => now(),
+                ]);
+            }
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * @param  array{status: string, payment_status: string}  $data
+     */
+    private function adminStatusChangeNote(bool $statusChanged, bool $paymentStatusChanged, array $data): string
+    {
+        if ($statusChanged && $paymentStatusChanged) {
+            return "Order status changed to {$data['status']} and payment status changed to {$data['payment_status']}.";
+        }
+
+        if ($statusChanged) {
+            return "Order status changed to {$data['status']}.";
+        }
+
+        return "Payment status changed to {$data['payment_status']}.";
+    }
+
+    /**
+     * Generate a unique human-facing order number, e.g. SE-2026-000123.
+     */
+    private function generateOrderNumber(): string
+    {
+        $year = now()->format('Y');
+        $prefix = "SE-{$year}-";
+
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $suffix = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            $orderNumber = $prefix . $suffix;
+
+            if (! Order::where('order_number', $orderNumber)->exists()) {
+                return $orderNumber;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate a unique order number.');
+    }
+}
+
+
 
 
 5. Create Order Page:
 ---------------------
 Edit resources/js/pages/admin/orders/Index.vue:
 -----------------------------------------------
+<script setup lang="ts">
+import { Head, Link } from '@inertiajs/vue3';
+import { Eye } from '@lucide/vue';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { formatTaka } from '@/lib/shop/currency';
+import { dashboard } from '@/routes';
+import { index, show } from '@/routes/admin/orders';
+import type {
+    AdminOrderFilters,
+    AdminOrderListItem,
+    AdminStatusOption,
+} from '@/types/admin';
+
+const props = defineProps<{
+    orders: AdminOrderListItem[];
+    filters: AdminOrderFilters;
+    statusOptions: AdminStatusOption[];
+    paymentStatusOptions: AdminStatusOption[];
+}>();
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
+            {
+                title: 'Orders',
+                href: index(),
+            },
+        ],
+    },
+});
+
+const selectClass =
+    'border-input bg-background ring-offset-background focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px]';
+
+function orderStatusVariant(
+    status: AdminOrderListItem['status'],
+): 'default' | 'secondary' | 'destructive' | 'outline' {
+    switch (status) {
+        case 'delivered':
+            return 'default';
+        case 'cancelled':
+            return 'destructive';
+        case 'pending':
+            return 'secondary';
+        default:
+            return 'outline';
+    }
+}
+
+function paymentStatusVariant(
+    status: AdminOrderListItem['payment_status'],
+): 'default' | 'secondary' | 'destructive' | 'outline' {
+    switch (status) {
+        case 'paid':
+            return 'default';
+        case 'failed':
+        case 'cancelled':
+            return 'destructive';
+        default:
+            return 'secondary';
+    }
+}
+
+function paymentMethodLabel(method: AdminOrderListItem['payment_method']): string {
+    return method === 'cod' ? 'Cash on Delivery' : 'SSLCommerz';
+}
+
+function formatDate(value: string | null): string {
+    if (!value) {
+        return '—';
+    }
+
+    return new Date(value).toLocaleString();
+}
+</script>
+
+<template>
+
+    <Head title="Orders" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <Heading title="Orders" description="View and manage customer orders" />
+
+        <form :action="index()" method="get"
+            class="grid gap-4 rounded-xl border border-sidebar-border/70 p-4 dark:border-sidebar-border lg:grid-cols-[1fr_180px_180px_auto]">
+            <div class="grid gap-2">
+                <Label for="search">Search</Label>
+                <Input id="search" name="search" :default-value="props.filters.search"
+                    placeholder="Order number, customer, phone, or email" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="status">Order status</Label>
+                <select id="status" name="status" :class="selectClass" :value="props.filters.status">
+                    <option value="">All statuses</option>
+                    <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="payment_status">Payment status</Label>
+                <select id="payment_status" name="payment_status" :class="selectClass"
+                    :value="props.filters.payment_status">
+                    <option value="">All payments</option>
+                    <option v-for="option in paymentStatusOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="flex items-end gap-2">
+                <Button type="submit">Filter</Button>
+                <Button as-child variant="outline">
+                    <Link :href="index()">Reset</Link>
+                </Button>
+            </div>
+        </form>
+
+        <div class="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[1100px] text-sm">
+                    <thead class="border-b bg-muted/40 text-left">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Order</th>
+                            <th class="px-4 py-3 font-medium">Customer</th>
+                            <th class="px-4 py-3 font-medium">Items</th>
+                            <th class="px-4 py-3 font-medium">Total</th>
+                            <th class="px-4 py-3 font-medium">Payment</th>
+                            <th class="px-4 py-3 font-medium">Status</th>
+                            <th class="px-4 py-3 font-medium">Placed</th>
+                            <th class="px-4 py-3 text-right font-medium">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="order in orders" :key="order.id" class="border-b last:border-b-0">
+                            <td class="px-4 py-3">
+                                <p class="font-medium">
+                                    {{ order.order_number }}
+                                </p>
+                                <p class="text-muted-foreground">
+                                    {{ paymentMethodLabel(order.payment_method) }}
+                                </p>
+                            </td>
+                            <td class="px-4 py-3">
+                                <p class="font-medium">
+                                    {{ order.customer_name }}
+                                </p>
+                                <p class="text-muted-foreground">
+                                    {{ order.phone }}
+                                </p>
+                            </td>
+                            <td class="px-4 py-3">
+                                {{ order.items_count }}
+                            </td>
+                            <td class="px-4 py-3 font-medium">
+                                {{ formatTaka(order.total) }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <Badge :variant="paymentStatusVariant(
+                                    order.payment_status,
+                                )
+                                    ">
+                                    {{ order.payment_status }}
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3">
+                                <Badge :variant="orderStatusVariant(order.status)">
+                                    {{ order.status }}
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3 text-muted-foreground">
+                                {{ formatDate(order.placed_at) }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-2">
+                                    <Button as-child variant="outline" size="sm">
+                                        <Link :href="show(order.id)">
+                                            <Eye class="size-4" />
+                                            View
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr v-if="orders.length === 0">
+                            <td colspan="8" class="px-4 py-10 text-center text-muted-foreground">
+                                No orders found.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
 
 
 6. Create Show Page:
 ---------------------
 Edit resources/js/pages/admin/orders/Show.vue:
 -----------------------------------------------
+<script setup lang="ts">
+import { Head, setLayoutProps, useForm } from '@inertiajs/vue3';
+import {
+    CheckCircle,
+    Clock,
+    Download,
+    Mail,
+    MapPin,
+    Package,
+    Phone,
+    Printer,
+    RotateCcw,
+    Truck,
+    User,
+    XCircle,
+} from '@lucide/vue';
+import OrderController from '@/actions/App/Http/Controllers/Admin/OrderController';
+import OrderStatusForm from '@/components/admin/OrderStatusForm.vue';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { formatTaka } from '@/lib/shop/currency';
+import { dashboard } from '@/routes';
+import { index, show } from '@/routes/admin/orders';
+import type {
+    AdminOrder,
+    AdminStatusOption,
+    OrderStatus,
+    OrderUpdateFormData,
+    PaymentStatus,
+} from '@/types/admin';
+
+const props = defineProps<{
+    order: AdminOrder;
+    statusOptions: AdminStatusOption[];
+    paymentStatusOptions: AdminStatusOption[];
+}>();
+
+setLayoutProps({
+    breadcrumbs: [
+        { title: 'Dashboard', href: dashboard() },
+        { title: 'Orders', href: index() },
+        { title: props.order.order_number, href: show(props.order.id) },
+    ],
+});
+
+const form = useForm<OrderUpdateFormData>({
+    status: props.order.status,
+    payment_status: props.order.payment_status,
+    note: '',
+});
+
+function submit(): void {
+    form.put(OrderController.update.url(props.order.id), {
+        preserveScroll: true,
+        onSuccess: () => form.reset('note'),
+    });
+}
+
+const ORDER_STEPS: OrderStatus[] = [
+    'pending',
+    'processing',
+    'shipped',
+    'delivered',
+];
+
+type StepColors = {
+    done: string;
+    active: string;
+    upcoming: string;
+    icon: typeof Package;
+    label: string;
+};
+
+const STEP_CONFIG: Record<string, StepColors> = {
+    pending: {
+        done: 'bg-amber-500 border-amber-500 text-white',
+        active: 'bg-amber-50 border-amber-500 text-amber-600',
+        upcoming: 'bg-background border-border text-muted-foreground',
+        icon: Clock,
+        label: 'Pending',
+    },
+    processing: {
+        done: 'bg-blue-500 border-blue-500 text-white',
+        active: 'bg-blue-50 border-blue-500 text-blue-600',
+        upcoming: 'bg-background border-border text-muted-foreground',
+        icon: RotateCcw,
+        label: 'Processing',
+    },
+    shipped: {
+        done: 'bg-violet-500 border-violet-500 text-white',
+        active: 'bg-violet-50 border-violet-500 text-violet-600',
+        upcoming: 'bg-background border-border text-muted-foreground',
+        icon: Truck,
+        label: 'Shipped',
+    },
+    delivered: {
+        done: 'bg-emerald-500 border-emerald-500 text-white',
+        active: 'bg-emerald-50 border-emerald-500 text-emerald-600',
+        upcoming: 'bg-background border-border text-muted-foreground',
+        icon: CheckCircle,
+        label: 'Delivered',
+    },
+};
+
+const TIMELINE_ICON_COLORS: Record<string, string> = {
+    pending: 'bg-amber-100 border-amber-400 text-amber-600',
+    processing: 'bg-blue-100 border-blue-400 text-blue-600',
+    shipped: 'bg-violet-100 border-violet-400 text-violet-600',
+    delivered: 'bg-emerald-100 border-emerald-400 text-emerald-600',
+    cancelled: 'bg-red-100 border-red-400 text-red-600',
+};
+
+const STATUS_BADGE_CLASSES: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-700 border border-amber-300',
+    processing: 'bg-blue-100 text-blue-700 border border-blue-300',
+    shipped: 'bg-violet-100 text-violet-700 border border-violet-300',
+    delivered: 'bg-emerald-100 text-emerald-700 border border-emerald-300',
+    cancelled: 'bg-red-100 text-red-700 border border-red-300',
+};
+
+const PAYMENT_BADGE_CLASSES: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-700 border border-amber-300',
+    paid: 'bg-emerald-100 text-emerald-700 border border-emerald-300',
+    failed: 'bg-red-100 text-red-700 border border-red-300',
+    cancelled: 'bg-red-100 text-red-700 border border-red-300',
+};
+
+function stepState(step: OrderStatus): 'done' | 'active' | 'upcoming' {
+    if (props.order.status === 'cancelled') {
+        return 'upcoming';
+    }
+
+    const currentIndex = ORDER_STEPS.indexOf(props.order.status);
+    const stepIndex = ORDER_STEPS.indexOf(step);
+
+    if (stepIndex < currentIndex) {
+        return 'done';
+    }
+
+    if (stepIndex === currentIndex) {
+        return 'active';
+    }
+
+    return 'upcoming';
+}
+
+function stepClasses(step: OrderStatus): string {
+    return STEP_CONFIG[step]?.[stepState(step)] ?? '';
+}
+
+function timelineIconClasses(status: string): string {
+    return TIMELINE_ICON_COLORS[status] ?? 'bg-muted border-border text-muted-foreground';
+}
+
+function statusBadgeClasses(status: string): string {
+    return STATUS_BADGE_CLASSES[status] ?? 'bg-muted text-foreground border';
+}
+
+function paymentBadgeClasses(status: string): string {
+    return PAYMENT_BADGE_CLASSES[status] ?? 'bg-muted text-foreground border';
+}
+
+function paymentMethodLabel(method: AdminOrder['payment_method']): string {
+    return method === 'cod' ? 'Cash on Delivery' : 'SSLCommerz';
+}
+
+function formatDate(value: string | null): string {
+    if (!value) {
+        return '—';
+    }
+
+    return new Date(value).toLocaleString('en-BD', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function printInvoice(): void {
+    window.print();
+}
+</script>
+
+<template>
+
+    <Head :title="order.order_number" />
+
+    <!-- ─── Screen view ─────────────────────────────────────────────────── -->
+    <div id="order-screen" class="flex h-full flex-1 flex-col gap-6 rounded-xl p-4">
+        <!-- Header bar -->
+        <div
+            class="flex flex-col gap-4 rounded-2xl bg-gradient-to-r from-violet-600 via-blue-600 to-indigo-600 p-5 text-white shadow-md sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <p class="mb-1 text-xs font-semibold uppercase tracking-widest text-violet-200">
+                    Order
+                </p>
+                <h1 class="text-2xl font-bold tracking-tight">
+                    {{ order.order_number }}
+                </h1>
+                <p class="mt-0.5 text-sm text-violet-200">
+                    Placed {{ formatDate(order.placed_at) }}
+                </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-full px-3 py-1 text-xs font-semibold capitalize"
+                    :class="statusBadgeClasses(order.status)"
+                    style="background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3)">
+                    {{ order.status }}
+                </span>
+                <span class="rounded-full px-3 py-1 text-xs font-semibold capitalize"
+                    style="background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3)">
+                    {{ order.payment_status }}
+                </span>
+                <Separator orientation="vertical" class="mx-1 h-6 bg-white/30" />
+                <Button variant="secondary" size="sm" class="bg-white/20 text-white hover:bg-white/30 border-white/30"
+                    @click="printInvoice">
+                    <Printer class="size-4" />
+                    Print
+                </Button>
+                <Button variant="secondary" size="sm" class="bg-white/20 text-white hover:bg-white/30 border-white/30"
+                    @click="printInvoice">
+                    <Download class="size-4" />
+                    Save PDF
+                </Button>
+            </div>
+        </div>
+
+        <!-- Fulfillment stepper -->
+        <Card v-if="order.status !== 'cancelled'"
+            class="border-none shadow-sm bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:to-background">
+            <CardContent class="pt-6 pb-5">
+                <div class="relative flex items-start justify-between">
+                    <!-- Background connector -->
+                    <div class="absolute top-5 right-0 left-0 mx-[calc(12.5%+20px)] h-0.5 bg-border"
+                        aria-hidden="true" />
+                    <div v-for="step in ORDER_STEPS" :key="step"
+                        class="relative flex flex-1 flex-col items-center gap-2">
+                        <div :class="[
+                            'relative z-10 flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300',
+                            stepClasses(step),
+                        ]">
+                            <component :is="STEP_CONFIG[step].icon" class="size-4" />
+                        </div>
+                        <span :class="[
+                            'text-xs font-semibold capitalize',
+                            stepState(step) === 'upcoming'
+                                ? 'text-muted-foreground'
+                                : 'text-foreground',
+                        ]">
+                            {{ STEP_CONFIG[step].label }}
+                        </span>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
+        <!-- Cancelled banner -->
+        <div v-if="order.status === 'cancelled'"
+            class="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-400">
+            <XCircle class="size-5 shrink-0 text-red-500" />
+            <p>
+                This order has been <strong>cancelled</strong>.
+                Payment status: <strong class="capitalize">{{ order.payment_status }}</strong>.
+            </p>
+        </div>
+
+        <!-- Main content grid -->
+        <div class="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+            <!-- Left column -->
+            <div class="grid auto-rows-min gap-6">
+                <!-- Line items -->
+                <Card class="overflow-hidden border-none shadow-sm">
+                    <CardHeader
+                        class="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/30 border-b">
+                        <CardTitle class="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
+                            <div
+                                class="flex size-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/50">
+                                <Package class="size-4 text-indigo-600 dark:text-indigo-400" />
+                            </div>
+                            Line items
+                        </CardTitle>
+                        <CardDescription>
+                            {{ order.items_count }} {{ order.items_count === 1 ? 'item' : 'items' }} in this order
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent class="p-0">
+                        <table class="w-full min-w-[540px] text-sm">
+                            <thead class="bg-indigo-600 text-white">
+                                <tr>
+                                    <th
+                                        class="px-5 py-3 text-left font-semibold text-indigo-100 text-xs uppercase tracking-wide">
+                                        Product</th>
+                                    <th
+                                        class="px-4 py-3 text-center font-semibold text-indigo-100 text-xs uppercase tracking-wide">
+                                        Qty</th>
+                                    <th
+                                        class="px-4 py-3 text-right font-semibold text-indigo-100 text-xs uppercase tracking-wide">
+                                        Unit price</th>
+                                    <th
+                                        class="px-5 py-3 text-right font-semibold text-indigo-100 text-xs uppercase tracking-wide">
+                                        Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(item, i) in order.items" :key="item.id"
+                                    :class="['border-b last:border-b-0', i % 2 === 0 ? 'bg-white dark:bg-background' : 'bg-indigo-50/40 dark:bg-indigo-950/10']">
+                                    <td class="px-5 py-4 font-medium">{{ item.product_name }}</td>
+                                    <td class="px-4 py-4 text-center">
+                                        <span
+                                            class="inline-flex size-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+                                            {{ item.quantity }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-4 text-right text-muted-foreground">{{
+                                        formatTaka(item.unit_price) }}</td>
+                                    <td class="px-5 py-4 text-right font-semibold">{{ formatTaka(item.line_total) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr class="border-t bg-slate-50 dark:bg-slate-900/30">
+                                    <td colspan="3" class="px-5 py-2.5 text-right text-xs text-muted-foreground">
+                                        Subtotal</td>
+                                    <td class="px-5 py-2.5 text-right text-sm font-medium">{{ formatTaka(order.subtotal)
+                                        }}</td>
+                                </tr>
+                                <tr class="bg-slate-50 dark:bg-slate-900/30">
+                                    <td colspan="3" class="px-5 py-2.5 text-right text-xs text-muted-foreground">
+                                        Delivery charge</td>
+                                    <td class="px-5 py-2.5 text-right text-sm font-medium">{{
+                                        formatTaka(order.delivery_charge) }}</td>
+                                </tr>
+                                <tr class="bg-indigo-600">
+                                    <td colspan="3" class="px-5 py-3.5 text-right text-sm font-bold text-indigo-100">
+                                        Order total</td>
+                                    <td class="px-5 py-3.5 text-right text-base font-extrabold text-white">{{
+                                        formatTaka(order.total) }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </CardContent>
+                </Card>
+
+                <!-- Status timeline -->
+                <Card class="border-none shadow-sm">
+                    <CardHeader
+                        class="bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 border-b">
+                        <CardTitle class="flex items-center gap-2 text-violet-700 dark:text-violet-400">
+                            <div
+                                class="flex size-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/50">
+                                <Clock class="size-4 text-violet-600 dark:text-violet-400" />
+                            </div>
+                            Status history
+                        </CardTitle>
+                        <CardDescription>Chronological log of all status changes</CardDescription>
+                    </CardHeader>
+                    <CardContent class="pt-6">
+                        <div v-if="order.status_histories.length > 0" class="relative">
+                            <div class="absolute top-5 bottom-5 left-[19px] w-0.5 bg-gradient-to-b from-violet-300 via-blue-200 to-transparent"
+                                aria-hidden="true" />
+                            <div v-for="(history, i) in order.status_histories" :key="history.id"
+                                class="relative flex gap-4 pb-6 last:pb-0">
+                                <div :class="[
+                                    'relative z-10 mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+                                    i === 0 ? timelineIconClasses(history.status) : 'bg-muted/50 border-border text-muted-foreground',
+                                ]">
+                                    <component :is="STEP_CONFIG[history.status]?.icon ?? Clock" class="size-4" />
+                                </div>
+                                <div class="flex flex-1 flex-col gap-1 pt-1.5">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span
+                                            :class="['rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize', statusBadgeClasses(history.status)]">
+                                            {{ history.status }}
+                                        </span>
+                                        <span class="text-xs text-muted-foreground">
+                                            {{ formatDate(history.created_at) }}
+                                        </span>
+                                    </div>
+                                    <p v-if="history.note" class="text-sm leading-relaxed">{{ history.note }}</p>
+                                    <p v-if="history.changed_by" class="text-xs text-muted-foreground">
+                                        Updated by
+                                        <span class="font-medium text-foreground">{{ history.changed_by.name }}</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <p v-else class="text-sm text-muted-foreground">
+                            No status history yet.
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <!-- Right column -->
+            <div class="grid auto-rows-min gap-6">
+                <!-- Customer -->
+                <Card class="border-none shadow-sm overflow-hidden">
+                    <CardHeader
+                        class="bg-gradient-to-r from-sky-50 to-cyan-50 dark:from-sky-950/30 dark:to-cyan-950/30 border-b">
+                        <CardTitle class="flex items-center gap-2 text-sky-700 dark:text-sky-400">
+                            <div
+                                class="flex size-7 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/50">
+                                <User class="size-4 text-sky-600 dark:text-sky-400" />
+                            </div>
+                            Customer
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent class="grid gap-4 pt-5 text-sm">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-cyan-500 text-white shadow-sm">
+                                <User class="size-4" />
+                            </div>
+                            <div>
+                                <p class="font-semibold">{{ order.customer_name }}</p>
+                                <p class="text-xs text-muted-foreground">
+                                    {{ order.customer ? 'Registered account' : 'Guest checkout' }}
+                                </p>
+                            </div>
+                        </div>
+                        <Separator />
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-100 dark:bg-sky-900/40">
+                                <Phone class="size-3.5 text-sky-600 dark:text-sky-400" />
+                            </div>
+                            <span>{{ order.phone }}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-100 dark:bg-sky-900/40">
+                                <Mail class="size-3.5 text-sky-600 dark:text-sky-400" />
+                            </div>
+                            <span class="break-all">{{ order.email }}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Shipping -->
+                <Card class="border-none shadow-sm overflow-hidden">
+                    <CardHeader
+                        class="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 border-b">
+                        <CardTitle class="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                            <div
+                                class="flex size-7 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/50">
+                                <MapPin class="size-4 text-orange-600 dark:text-orange-400" />
+                            </div>
+                            Shipping address
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent class="grid gap-3 pt-5 text-sm">
+                        <div class="rounded-xl bg-orange-50/60 p-4 dark:bg-orange-950/20">
+                            <p class="font-semibold leading-relaxed">
+                                {{ order.address }},<br />
+                                {{ order.area }}, {{ order.district }}
+                            </p>
+                        </div>
+                        <div v-if="order.notes"
+                            class="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+                            <p
+                                class="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                                Delivery note
+                            </p>
+                            <p class="text-sm">{{ order.notes }}</p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Payment summary -->
+                <Card class="border-none shadow-sm overflow-hidden">
+                    <CardHeader
+                        class="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border-b">
+                        <CardTitle class="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                            <div
+                                class="flex size-7 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/50">
+                                <Package class="size-4 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            Payment summary
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent class="grid gap-3 pt-5 text-sm">
+                        <div class="flex items-center justify-between">
+                            <span class="text-muted-foreground">Method</span>
+                            <span class="font-medium">{{ paymentMethodLabel(order.payment_method) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-muted-foreground">Payment status</span>
+                            <span
+                                :class="['rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize', paymentBadgeClasses(order.payment_status)]">
+                                {{ order.payment_status }}
+                            </span>
+                        </div>
+                        <Separator />
+                        <div class="flex items-center justify-between">
+                            <span class="text-muted-foreground">Subtotal</span>
+                            <span>{{ formatTaka(order.subtotal) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-muted-foreground">Delivery charge</span>
+                            <span>{{ formatTaka(order.delivery_charge) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between rounded-xl bg-emerald-600 px-4 py-3 text-white">
+                            <span class="font-semibold">Total</span>
+                            <span class="text-lg font-extrabold">{{ formatTaka(order.total) }}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                            <div>
+                                <p class="mb-0.5 font-medium">Placed</p>
+                                <p>{{ formatDate(order.placed_at) }}</p>
+                            </div>
+                            <div>
+                                <p class="mb-0.5 font-medium">Last updated</p>
+                                <p>{{ formatDate(order.updated_at) }}</p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Update order -->
+                <Card class="border-none shadow-sm overflow-hidden">
+                    <CardHeader
+                        class="bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 border-b">
+                        <CardTitle class="flex items-center gap-2 text-violet-700 dark:text-violet-400">
+                            <div
+                                class="flex size-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/50">
+                                <RotateCcw class="size-4 text-violet-600 dark:text-violet-400" />
+                            </div>
+                            Update order
+                        </CardTitle>
+                        <CardDescription>Change fulfillment or payment status</CardDescription>
+                    </CardHeader>
+                    <CardContent class="pt-5">
+                        <form @submit.prevent="submit">
+                            <OrderStatusForm :form="form" :status-options="statusOptions"
+                                :payment-status-options="paymentStatusOptions" />
+                        </form>
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Printable Invoice (hidden on screen, shown on print) ───────── -->
+    <div id="invoice-print">
+        <!-- Coloured header bar -->
+        <div class="invoice-header-bar">
+            <div class="invoice-brand">
+                <h1>B9-Ecom</h1>
+                <p>Your trusted online store</p>
+            </div>
+            <div class="invoice-title-block">
+                <h2>INVOICE</h2>
+                <span class="invoice-number">{{ order.order_number }}</span>
+            </div>
+        </div>
+
+        <!-- Meta row -->
+        <div class="invoice-meta-row">
+            <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Order Date</span>
+                <span class="invoice-meta-value">{{ formatDate(order.placed_at) }}</span>
+            </div>
+            <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Payment Method</span>
+                <span class="invoice-meta-value">{{ paymentMethodLabel(order.payment_method) }}</span>
+            </div>
+            <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Order Status</span>
+                <span class="invoice-status-chip invoice-status-chip--order">{{ order.status }}</span>
+            </div>
+            <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Payment Status</span>
+                <span class="invoice-status-chip invoice-status-chip--payment">{{ order.payment_status }}</span>
+            </div>
+        </div>
+
+        <!-- Bill To / Ship To -->
+        <div class="invoice-parties">
+            <div class="invoice-party-box invoice-party-box--bill">
+                <h3>Bill To</h3>
+                <p><strong>{{ order.customer_name }}</strong></p>
+                <p>{{ order.phone }}</p>
+                <p>{{ order.email }}</p>
+            </div>
+            <div class="invoice-party-box invoice-party-box--ship">
+                <h3>Ship To</h3>
+                <p>{{ order.address }}</p>
+                <p>{{ order.area }}, {{ order.district }}</p>
+                <p v-if="order.notes">Note: {{ order.notes }}</p>
+            </div>
+        </div>
+
+        <!-- Items table -->
+        <table class="invoice-items">
+            <thead>
+                <tr>
+                    <th class="text-left">#</th>
+                    <th class="text-left">Product</th>
+                    <th class="text-center">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(item, idx) in order.items" :key="item.id" :class="idx % 2 === 1 ? 'invoice-row-alt' : ''">
+                    <td>{{ idx + 1 }}</td>
+                    <td>{{ item.product_name }}</td>
+                    <td class="text-center">{{ item.quantity }}</td>
+                    <td class="text-right">{{ formatTaka(item.unit_price) }}</td>
+                    <td class="text-right">{{ formatTaka(item.line_total) }}</td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr class="invoice-subtotal-row">
+                    <td colspan="4" class="text-right">Subtotal</td>
+                    <td class="text-right">{{ formatTaka(order.subtotal) }}</td>
+                </tr>
+                <tr class="invoice-subtotal-row">
+                    <td colspan="4" class="text-right">Delivery Charge</td>
+                    <td class="text-right">{{ formatTaka(order.delivery_charge) }}</td>
+                </tr>
+                <tr class="invoice-total-row">
+                    <td colspan="4" class="text-right">Grand Total</td>
+                    <td class="text-right">{{ formatTaka(order.total) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Footer -->
+        <div class="invoice-footer-bar">
+            <p>Thank you for shopping with B9-Ecom! 🎉</p>
+            <p>Questions? Email us at <strong>support@b9ecom.com</strong></p>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+#invoice-print {
+    display: none;
+}
+
+@media print {
+    #order-screen {
+        display: none !important;
+    }
+
+    #invoice-print {
+        display: block;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 13px;
+        color: #1e1e2e;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    /* ── Header bar ─────────────────────────────────────────── */
+    .invoice-header-bar {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #2563eb 100%);
+        color: white;
+        padding: 28px 32px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 12px 12px 0 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-brand h1 {
+        font-size: 28px;
+        font-weight: 900;
+        margin: 0 0 4px;
+        color: white;
+        letter-spacing: -0.5px;
+    }
+
+    .invoice-brand p {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.75);
+        margin: 0;
+    }
+
+    .invoice-title-block {
+        text-align: right;
+    }
+
+    .invoice-title-block h2 {
+        font-size: 24px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        color: rgba(255, 255, 255, 0.85);
+        margin: 0 0 6px;
+    }
+
+    .invoice-number {
+        font-size: 15px;
+        font-weight: 700;
+        color: white;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 4px 12px;
+        border-radius: 20px;
+        letter-spacing: 1px;
+    }
+
+    /* ── Meta row ───────────────────────────────────────────── */
+    .invoice-meta-row {
+        display: flex;
+        gap: 0;
+        background: #f8f7ff;
+        border: 1px solid #e0e0f0;
+        border-top: none;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-meta-item {
+        flex: 1;
+        padding: 14px 16px;
+        border-right: 1px solid #e0e0f0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .invoice-meta-item:last-child {
+        border-right: none;
+    }
+
+    .invoice-meta-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #7c6faa;
+    }
+
+    .invoice-meta-value {
+        font-size: 12px;
+        font-weight: 600;
+        color: #1e1e2e;
+    }
+
+    .invoice-status-chip {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: capitalize;
+        padding: 2px 10px;
+        border-radius: 20px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-status-chip--order {
+        background: #ede9fe;
+        color: #5b21b6;
+    }
+
+    .invoice-status-chip--payment {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    /* ── Parties ────────────────────────────────────────────── */
+    .invoice-parties {
+        display: flex;
+        gap: 0;
+        margin: 20px 0;
+        border: 1px solid #e0e0f0;
+        border-radius: 10px;
+        overflow: hidden;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-party-box {
+        flex: 1;
+        padding: 16px 20px;
+    }
+
+    .invoice-party-box--bill {
+        background: #eff6ff;
+        border-right: 1px solid #e0e0f0;
+    }
+
+    .invoice-party-box--ship {
+        background: #fff7ed;
+    }
+
+    .invoice-party-box h3 {
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #6366f1;
+        margin: 0 0 8px;
+    }
+
+    .invoice-party-box--ship h3 {
+        color: #ea580c;
+    }
+
+    .invoice-party-box p {
+        margin: 3px 0;
+        font-size: 12px;
+        color: #333;
+        line-height: 1.6;
+    }
+
+    /* ── Items table ────────────────────────────────────────── */
+    .invoice-items {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .invoice-items thead tr {
+        background: linear-gradient(90deg, #4f46e5, #7c3aed);
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-items th {
+        padding: 11px 14px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #e0d9ff;
+    }
+
+    .invoice-items tbody tr {
+        border-bottom: 1px solid #eeedf8;
+    }
+
+    .invoice-items td {
+        padding: 10px 14px;
+        color: #2e2e3e;
+    }
+
+    .invoice-row-alt {
+        background: #f5f3ff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-subtotal-row td {
+        padding: 7px 14px;
+        color: #555;
+        background: #fafafa;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-total-row {
+        background: linear-gradient(90deg, #059669, #10b981);
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-total-row td {
+        padding: 14px 14px;
+        font-size: 15px;
+        font-weight: 800;
+        color: white !important;
+        background: transparent;
+    }
+
+    .text-left {
+        text-align: left;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    .text-right {
+        text-align: right;
+    }
+
+    /* ── Footer bar ─────────────────────────────────────────── */
+    .invoice-footer-bar {
+        margin-top: 20px;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: white;
+        text-align: center;
+        padding: 16px 24px;
+        border-radius: 0 0 12px 12px;
+        font-size: 12px;
+        line-height: 1.8;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .invoice-footer-bar p {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .invoice-footer-bar strong {
+        color: white;
+    }
+}
+</style>
+
+
 
 
 7. Edit admin.ts types:
 -----------------------
 Edit resources/js/types/admin.ts:
 ---------------------------------
+export type CategoryImageSource = 'url' | 'upload';
+
+export type ImageSource = CategoryImageSource;
+
+export type AdminCategoryOption = {
+    id: number;
+    name: string;
+    is_deleted?: boolean;
+};
+
+export type AdminCategory = {
+    id: number;
+    name: string;
+    slug: string;
+    image: string | null;
+    image_source: CategoryImageSource;
+    image_url: string;
+    description: string | null;
+    sort_order: number;
+    is_active: boolean;
+    products_count: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type CategoryFormData = {
+    name: string;
+    slug: string;
+    image_source: CategoryImageSource;
+    image: string;
+    image_file: File | null;
+    description: string;
+    sort_order: number;
+    is_active: boolean;
+};
+
+export type StockStatus = 'in_stock' | 'stock_out';
+
+export type AdminProductListItem = {
+    id: number;
+    name: string;
+    slug: string;
+    category: AdminCategoryOption;
+    price: number;
+    compare_at_price: number | null;
+    stock_status: StockStatus;
+    is_active: boolean;
+    is_best_seller: boolean;
+    is_featured: boolean;
+    sold_count: number;
+    image: string | null;
+};
+
+export type AdminProductImagePayload = {
+    id: number;
+    source: ImageSource;
+    image_path: string;
+    preview: string | null;
+    alt_text: string | null;
+    is_primary: boolean;
+    sort_order: number;
+};
+
+export type ProductImageFormItem = {
+    id: number | null;
+    client_key: string;
+    source: ImageSource;
+    image_path: string;
+    preview_url: string | null;
+    alt_text: string;
+    is_primary: boolean;
+    sort_order: number;
+    file: File | null;
+};
+
+export type AdminProduct = AdminProductListItem & {
+    category_id: number;
+    short_description: string | null;
+    description: string | null;
+    images: AdminProductImagePayload[];
+    created_at: string;
+    updated_at: string;
+};
+
+export type ProductFormData = {
+    category_id: number | '';
+    name: string;
+    slug: string;
+    short_description: string;
+    description: string;
+    price: number | '';
+    compare_at_price: number | '';
+    stock_status: StockStatus;
+    is_best_seller: boolean;
+    is_featured: boolean;
+    is_active: boolean;
+    sold_count: number;
+    images: ProductImageFormItem[];
+};
+
+export type OrderStatus =
+    | 'pending'
+    | 'processing'
+    | 'shipped'
+    | 'delivered'
+    | 'cancelled';
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled';
+
+export type PaymentMethod = 'cod' | 'sslcommerz';
+
+export type AdminStatusOption = {
+    value: string;
+    label: string;
+};
+
+export type AdminOrderListItem = {
+    id: number;
+    order_number: string;
+    customer_name: string;
+    phone: string;
+    email: string;
+    total: number;
+    items_count: number;
+    payment_method: PaymentMethod;
+    payment_status: PaymentStatus;
+    status: OrderStatus;
+    placed_at: string | null;
+    created_at: string;
+};
+
+export type AdminOrderItem = {
+    id: number;
+    product_id: number | null;
+    product_name: string;
+    unit_price: number;
+    quantity: number;
+    line_total: number;
+};
+
+export type AdminOrderStatusHistory = {
+    id: number;
+    status: OrderStatus;
+    note: string | null;
+    changed_by: {
+        id: number;
+        name: string;
+    } | null;
+    created_at: string;
+};
+
+export type AdminOrder = AdminOrderListItem & {
+    district: string;
+    area: string;
+    address: string;
+    notes: string | null;
+    subtotal: number;
+    delivery_charge: number;
+    customer: {
+        id: number;
+        name: string;
+        email: string;
+    } | null;
+    items: AdminOrderItem[];
+    status_histories: AdminOrderStatusHistory[];
+    updated_at: string;
+};
+
+export type AdminOrderFilters = {
+    search: string;
+    status: string;
+    payment_status: string;
+};
+
+export type AdminWishlistListItem = {
+    id: number;
+    user: {
+        id: number;
+        name: string;
+        email: string;
+    };
+    product: {
+        id: number;
+        name: string;
+        slug: string;
+        price: number;
+        stock_status: StockStatus;
+        is_active: boolean;
+        image: string | null;
+    };
+    created_at: string;
+};
+
+export type AdminWishlistFilters = {
+    search: string;
+};
+
+export type OrderUpdateFormData = {
+    status: OrderStatus;
+    payment_status: PaymentStatus;
+    note: string;
+};
+
+
+
+
+
 
 
 8. Create index.ts for orders:
 ------------------------------
 Edit resources/js/routes/admin/orders/index.ts:
 ------------------------------------------------
+import { queryParams, type RouteQueryOptions, type RouteDefinition, type RouteFormDefinition, applyUrlDefaults } from './../../../wayfinder'
+/**
+* @see \App\Http\Controllers\Admin\OrderController::index
+ * @see app/Http/Controllers/Admin/OrderController.php:26
+ * @route '/admin/orders'
+ */
+export const index = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: index.url(options),
+    method: 'get',
+})
+
+index.definition = {
+    methods: ["get","head"],
+    url: '/admin/orders',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\OrderController::index
+ * @see app/Http/Controllers/Admin/OrderController.php:26
+ * @route '/admin/orders'
+ */
+index.url = (options?: RouteQueryOptions) => {
+    return index.definition.url + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\OrderController::index
+ * @see app/Http/Controllers/Admin/OrderController.php:26
+ * @route '/admin/orders'
+ */
+index.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: index.url(options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\OrderController::index
+ * @see app/Http/Controllers/Admin/OrderController.php:26
+ * @route '/admin/orders'
+ */
+index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: index.url(options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\OrderController::index
+ * @see app/Http/Controllers/Admin/OrderController.php:26
+ * @route '/admin/orders'
+ */
+    const indexForm = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: index.url(options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\OrderController::index
+ * @see app/Http/Controllers/Admin/OrderController.php:26
+ * @route '/admin/orders'
+ */
+        indexForm.get = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: index.url(options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\OrderController::index
+ * @see app/Http/Controllers/Admin/OrderController.php:26
+ * @route '/admin/orders'
+ */
+        indexForm.head = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: index.url({
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    index.form = indexForm
+/**
+* @see \App\Http\Controllers\Admin\OrderController::show
+ * @see app/Http/Controllers/Admin/OrderController.php:70
+ * @route '/admin/orders/{order}'
+ */
+export const show = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: show.url(args, options),
+    method: 'get',
+})
+
+show.definition = {
+    methods: ["get","head"],
+    url: '/admin/orders/{order}',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\OrderController::show
+ * @see app/Http/Controllers/Admin/OrderController.php:70
+ * @route '/admin/orders/{order}'
+ */
+show.url = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { order: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { order: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    order: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        order: typeof args.order === 'object'
+                ? args.order.id
+                : args.order,
+                }
+
+    return show.definition.url
+            .replace('{order}', parsedArgs.order.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\OrderController::show
+ * @see app/Http/Controllers/Admin/OrderController.php:70
+ * @route '/admin/orders/{order}'
+ */
+show.get = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: show.url(args, options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\OrderController::show
+ * @see app/Http/Controllers/Admin/OrderController.php:70
+ * @route '/admin/orders/{order}'
+ */
+show.head = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: show.url(args, options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\OrderController::show
+ * @see app/Http/Controllers/Admin/OrderController.php:70
+ * @route '/admin/orders/{order}'
+ */
+    const showForm = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: show.url(args, options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\OrderController::show
+ * @see app/Http/Controllers/Admin/OrderController.php:70
+ * @route '/admin/orders/{order}'
+ */
+        showForm.get = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: show.url(args, options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\OrderController::show
+ * @see app/Http/Controllers/Admin/OrderController.php:70
+ * @route '/admin/orders/{order}'
+ */
+        showForm.head = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: show.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    show.form = showForm
+/**
+* @see \App\Http\Controllers\Admin\OrderController::update
+ * @see app/Http/Controllers/Admin/OrderController.php:88
+ * @route '/admin/orders/{order}'
+ */
+export const update = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'put'> => ({
+    url: update.url(args, options),
+    method: 'put',
+})
+
+update.definition = {
+    methods: ["put","patch"],
+    url: '/admin/orders/{order}',
+} satisfies RouteDefinition<["put","patch"]>
+
+/**
+* @see \App\Http\Controllers\Admin\OrderController::update
+ * @see app/Http/Controllers/Admin/OrderController.php:88
+ * @route '/admin/orders/{order}'
+ */
+update.url = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { order: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { order: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    order: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        order: typeof args.order === 'object'
+                ? args.order.id
+                : args.order,
+                }
+
+    return update.definition.url
+            .replace('{order}', parsedArgs.order.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\OrderController::update
+ * @see app/Http/Controllers/Admin/OrderController.php:88
+ * @route '/admin/orders/{order}'
+ */
+update.put = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'put'> => ({
+    url: update.url(args, options),
+    method: 'put',
+})
+/**
+* @see \App\Http\Controllers\Admin\OrderController::update
+ * @see app/Http/Controllers/Admin/OrderController.php:88
+ * @route '/admin/orders/{order}'
+ */
+update.patch = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'patch'> => ({
+    url: update.url(args, options),
+    method: 'patch',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\OrderController::update
+ * @see app/Http/Controllers/Admin/OrderController.php:88
+ * @route '/admin/orders/{order}'
+ */
+    const updateForm = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+        action: update.url(args, {
+                    [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                        _method: 'PUT',
+                        ...(options?.query ?? options?.mergeQuery ?? {}),
+                    }
+                }),
+        method: 'post',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\OrderController::update
+ * @see app/Http/Controllers/Admin/OrderController.php:88
+ * @route '/admin/orders/{order}'
+ */
+        updateForm.put = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: update.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'PUT',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\OrderController::update
+ * @see app/Http/Controllers/Admin/OrderController.php:88
+ * @route '/admin/orders/{order}'
+ */
+        updateForm.patch = (args: { order: number | { id: number } } | [order: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: update.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'PATCH',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+    
+    update.form = updateForm
+const orders = {
+    index: Object.assign(index, index),
+show: Object.assign(show, show),
+update: Object.assign(update, update),
+}
+
+export default orders
+
+
 
 
 9. Create Order Controller:
@@ -57,6 +2053,204 @@ Command: php artisan make:controller Admin/OrderController
 
 Edit app/Http/Controllers/Admin/OrderController.php:
 ----------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Concerns\OrderValidationRules;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\UpdateOrderRequest;
+use App\Models\Order;
+use App\Services\OrderService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class OrderController extends Controller
+{
+    use OrderValidationRules;
+
+    public function __construct(
+        private readonly OrderService $orderService,
+    ) {}
+
+    /**
+     * Display a listing of orders.
+     */
+    public function index(Request $request): Response
+    {
+        $search = trim((string) $request->query('search', ''));
+        $status = (string) $request->query('status', '');
+        $paymentStatus = (string) $request->query('payment_status', '');
+
+        $orders = Order::query()
+            ->withCount('items')
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('order_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            })
+            ->when(
+                in_array($status, self::orderStatuses(), true),
+                fn($query) => $query->where('status', $status),
+            )
+            ->when(
+                in_array($paymentStatus, self::paymentStatuses(), true),
+                fn($query) => $query->where('payment_status', $paymentStatus),
+            )
+            ->orderByDesc('placed_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn(Order $order): array => $this->listPayload($order));
+
+        return Inertia::render('admin/orders/Index', [
+            'orders' => $orders,
+            'filters' => [
+                'search' => $search,
+                'status' => in_array($status, self::orderStatuses(), true) ? $status : '',
+                'payment_status' => in_array($paymentStatus, self::paymentStatuses(), true) ? $paymentStatus : '',
+            ],
+            'statusOptions' => $this->statusOptions(self::orderStatuses()),
+            'paymentStatusOptions' => $this->statusOptions(self::paymentStatuses()),
+        ]);
+    }
+
+    /**
+     * Display the specified order.
+     */
+    public function show(Order $order): Response
+    {
+        $order->load([
+            'items.product',
+            'statusHistories.changedBy',
+            'user',
+        ]);
+
+        return Inertia::render('admin/orders/Show', [
+            'order' => $this->detailPayload($order),
+            'statusOptions' => $this->statusOptions(self::orderStatuses()),
+            'paymentStatusOptions' => $this->statusOptions(self::paymentStatuses()),
+        ]);
+    }
+
+    /**
+     * Update the specified order in storage.
+     */
+    public function update(UpdateOrderRequest $request, Order $order): RedirectResponse
+    {
+        $this->orderService->updateFromAdmin(
+            $order,
+            $request->validated(),
+            $request->user()?->id,
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Order updated.')]);
+
+        return to_route('admin.orders.show', $order);
+    }
+
+    /**
+     * @return array{
+     *     id: int,
+     *     order_number: string,
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     total: float,
+     *     items_count: int,
+     *     payment_method: string,
+     *     payment_status: string,
+     *     status: string,
+     *     placed_at: string|null,
+     *     created_at: string
+     * }
+     */
+    private function listPayload(Order $order): array
+    {
+        return [
+            'id' => $order->id,
+            'order_number' => $order->order_number,
+            'customer_name' => $order->customer_name,
+            'phone' => $order->phone,
+            'email' => $order->email,
+            'total' => (float) $order->total,
+            'items_count' => (int) ($order->items_count ?? 0),
+            'payment_method' => $order->payment_method,
+            'payment_status' => $order->payment_status,
+            'status' => $order->status,
+            'placed_at' => $order->placed_at?->toIso8601String(),
+            'created_at' => $order->created_at?->toIso8601String() ?? '',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function detailPayload(Order $order): array
+    {
+        return [
+            ...$this->listPayload($order),
+            'district' => $order->district,
+            'area' => $order->area,
+            'address' => $order->address,
+            'notes' => $order->notes,
+            'subtotal' => (float) $order->subtotal,
+            'delivery_charge' => (float) $order->delivery_charge,
+            'customer' => $order->user ? [
+                'id' => $order->user->id,
+                'name' => $order->user->name,
+                'email' => $order->user->email,
+            ] : null,
+            'items' => $order->items
+                ->map(fn($item): array => [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->product_name,
+                    'unit_price' => (float) $item->unit_price,
+                    'quantity' => (int) $item->quantity,
+                    'line_total' => (float) $item->line_total,
+                ])
+                ->values()
+                ->all(),
+            'status_histories' => $order->statusHistories
+                ->sortByDesc('created_at')
+                ->values()
+                ->map(fn($history): array => [
+                    'id' => $history->id,
+                    'status' => $history->status,
+                    'note' => $history->note,
+                    'changed_by' => $history->changedBy ? [
+                        'id' => $history->changedBy->id,
+                        'name' => $history->changedBy->name,
+                    ] : null,
+                    'created_at' => $history->created_at?->toIso8601String() ?? '',
+                ])
+                ->all(),
+            'updated_at' => $order->updated_at?->toIso8601String() ?? '',
+        ];
+    }
+
+    /**
+     * @param  list<string>  $values
+     * @return list<array{value: string, label: string}>
+     */
+    private function statusOptions(array $values): array
+    {
+        return collect($values)
+            ->map(fn(string $value): array => [
+                'value' => $value,
+                'label' => ucfirst(str_replace('_', ' ', $value)),
+            ])
+            ->values()
+            ->all();
+    }
+}
+
+
 
 
 
@@ -64,6 +2258,45 @@ Edit app/Http/Controllers/Admin/OrderController.php:
 --------------------------------------------
 Edit app/Concerns/OrderValidationRules.php:
 -------------------------------------------
+<?php
+
+namespace App\Concerns;
+
+use Illuminate\Validation\Rule;
+
+trait OrderValidationRules
+{
+    /**
+     * @return list<string>
+     */
+    public static function orderStatuses(): array
+    {
+        return ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function paymentStatuses(): array
+    {
+        return ['pending', 'paid', 'failed', 'cancelled'];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function orderUpdateRules(): array
+    {
+        return [
+            'status' => ['required', Rule::in(self::orderStatuses())],
+            'payment_status' => ['required', Rule::in(self::paymentStatuses())],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ];
+    }
+}
+
+
+
 
 
 
@@ -71,6 +2304,40 @@ Edit app/Concerns/OrderValidationRules.php:
 ------------------------------
 Edit app/Http/Requests/Admin/UpdateOrderRequest.php:
 ----------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Admin;
+
+use App\Concerns\OrderValidationRules;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+
+class UpdateOrderRequest extends FormRequest
+{
+    use OrderValidationRules;
+
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return $this->user()?->role === 'admin';
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return $this->orderUpdateRules();
+    }
+}
+
+
+
+
 
 
 
@@ -78,22 +2345,292 @@ Edit app/Http/Requests/Admin/UpdateOrderRequest.php:
 ------------------------------
 Edit resources/js/components/AppSidebar.vue:
 --------------------------------------------
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { BookOpen, FolderGit2, Heart, LayoutGrid, Package, ShoppingCart, Tags } from '@lucide/vue';
+import AppLogo from '@/components/AppLogo.vue';
+import NavFooter from '@/components/NavFooter.vue';
+import NavMain from '@/components/NavMain.vue';
+import NavUser from '@/components/NavUser.vue';
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { dashboard } from '@/routes';
+import { index as categoriesIndex } from '@/routes/admin/categories';
+import { index as ordersIndex } from '@/routes/admin/orders';
+import { index as productsIndex } from '@/routes/admin/products';
+import type { NavItem } from '@/types';
+
+const mainNavItems: NavItem[] = [
+    {
+        title: 'Dashboard',
+        href: dashboard(),
+        icon: LayoutGrid,
+    },
+    {
+        title: 'Categories',
+        href: categoriesIndex(),
+        icon: Tags,
+    },
+    {
+        title: 'Products',
+        href: productsIndex(),
+        icon: Package,
+    },
+    {
+        title: 'Orders',
+        href: ordersIndex(),
+        icon: ShoppingCart,
+    },
+];
+
+const footerNavItems: NavItem[] = [
+    {
+        title: 'Repository',
+        href: 'https://github.com/laravel/vue-starter-kit',
+        icon: FolderGit2,
+    },
+    {
+        title: 'Documentation',
+        href: 'https://laravel.com/docs/starter-kits#vue',
+        icon: BookOpen,
+    },
+];
+</script>
+
+<template>
+    <Sidebar collapsible="icon" variant="inset">
+        <SidebarHeader>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton size="lg" as-child>
+                        <Link :href="dashboard()">
+                            <AppLogo />
+                        </Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent>
+            <NavMain :items="mainNavItems" />
+        </SidebarContent>
+
+        <SidebarFooter>
+            <NavFooter :items="footerNavItems" />
+            <NavUser />
+        </SidebarFooter>
+    </Sidebar>
+    <slot />
+</template>
+
+
+
 
 
 13. Edit routes/admin.php:
 --------------------------
+<?php
+
+use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\WishlistController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware(['auth', 'verified', 'admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::resource('categories', CategoryController::class);
+        Route::resource('products', ProductController::class);
+        Route::resource('orders', OrderController::class)->only(['index', 'show', 'update']);
+    });
+
+
+
 
 
 14. Create Components OrderStatusForm.vue:
 ------------------------------------------
 Edit resources/js/components/admin/OrderStatusForm.vue:
 ------------------------------------------------------
+<script setup lang="ts">
+import type { InertiaForm } from '@inertiajs/vue3';
+import InputError from '@/components/InputError.vue';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import type {
+    AdminStatusOption,
+    OrderUpdateFormData,
+} from '@/types/admin';
+
+type Props = {
+    form: InertiaForm<OrderUpdateFormData>;
+    statusOptions: AdminStatusOption[];
+    paymentStatusOptions: AdminStatusOption[];
+};
+
+defineProps<Props>();
+
+const selectClass =
+    'border-input bg-background ring-offset-background focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50';
+
+const textareaClass =
+    'border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-24 w-full rounded-md border px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50';
+</script>
+
+<template>
+    <div class="grid gap-6">
+        <div class="grid gap-4 sm:grid-cols-2">
+            <div class="grid gap-2">
+                <Label for="status">Order status</Label>
+                <select id="status" v-model="form.status" :class="selectClass" required>
+                    <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+                <InputError :message="form.errors.status" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="payment_status">Payment status</Label>
+                <select id="payment_status" v-model="form.payment_status" :class="selectClass" required>
+                    <option v-for="option in paymentStatusOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+                <InputError :message="form.errors.payment_status" />
+            </div>
+        </div>
+
+        <div class="grid gap-2">
+            <Label for="note">Note (optional)</Label>
+            <textarea id="note" v-model="form.note" :class="textareaClass"
+                placeholder="Add a note for the status history" />
+            <InputError :message="form.errors.note" />
+        </div>
+
+        <div class="flex justify-end">
+            <Button type="submit" :disabled="form.processing">
+                Update order
+            </Button>
+        </div>
+    </div>
+</template>
+
+
+
 
 
 15. Create OrderFactory.php:
 ----------------------------
 Edit database/factories/OrderFactory.php:
 -----------------------------------------
+<?php
+
+namespace Database\Factories;
+
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderStatusHistory;
+use App\Models\Product;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<Order>
+ */
+class OrderFactory extends Factory
+{
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        $subtotal = fake()->randomFloat(2, 500, 5000);
+        $deliveryCharge = fake()->randomElement([60.0, 120.0]);
+
+        return [
+            'order_number' => $this->generateOrderNumber(),
+            'user_id' => null,
+            'customer_name' => fake()->name(),
+            'phone' => '01' . fake()->numerify('#########'),
+            'email' => fake()->safeEmail(),
+            'district' => fake()->randomElement(['Dhaka', 'Chattogram', 'Sylhet']),
+            'area' => fake()->city(),
+            'address' => fake()->streetAddress(),
+            'notes' => fake()->optional()->sentence(),
+            'subtotal' => $subtotal,
+            'delivery_charge' => $deliveryCharge,
+            'total' => $subtotal + $deliveryCharge,
+            'payment_method' => 'cod',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+            'placed_at' => now(),
+        ];
+    }
+
+    /**
+     * Attach line items and an initial status history entry.
+     */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (Order $order): void {
+            if ($order->items()->exists()) {
+                return;
+            }
+
+            $product = Product::factory()->create();
+            $quantity = fake()->numberBetween(1, 3);
+            $lineTotal = (float) $product->price * $quantity;
+
+            OrderItem::query()->create([
+                'order_id' => $order->id,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'unit_price' => $product->price,
+                'quantity' => $quantity,
+                'line_total' => $lineTotal,
+            ]);
+
+            OrderStatusHistory::query()->create([
+                'order_id' => $order->id,
+                'status' => $order->status,
+                'note' => 'Order placed via Cash on Delivery.',
+                'changed_by' => $order->user_id,
+                'created_at' => $order->placed_at ?? now(),
+            ]);
+        });
+    }
+
+    public function processing(): static
+    {
+        return $this->state(fn(): array => ['status' => 'processing']);
+    }
+
+    public function delivered(): static
+    {
+        return $this->state(fn(): array => [
+            'status' => 'delivered',
+            'payment_status' => 'paid',
+        ]);
+    }
+
+    private function generateOrderNumber(): string
+    {
+        $year = now()->format('Y');
+
+        return 'SE-' . $year . '-' . str_pad((string) fake()->unique()->numberBetween(1, 999999), 6, '0', STR_PAD_LEFT);
+    }
+}
 
 
 
@@ -101,7 +2638,3 @@ Edit database/factories/OrderFactory.php:
 
 
 
-
-
-Hero Slider:
-------------
