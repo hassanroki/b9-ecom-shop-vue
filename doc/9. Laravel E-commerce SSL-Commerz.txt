@@ -1,0 +1,300 @@
+9. Laravel E-commerce SSL-Commerz:
+----------------------------------
+1. Install Package Command: 
+composer require hasinhayder/sslcommerz-laravel
+
+Then VS Code Command:
+We have to integrate ssl commerz , use this package for the integration: https://github.com/hasinhayder/sslcommerz-laravel 
+alrrady we have a payment table but you may add or modify or remove column if required. at first no need to integrate this with the storefront. make the api first, no need auth for api as we will test this later we will go for the stroefront entegration.
+Here is the store info for sandbox: Store  
+Store ID: tasku6a5766d3d7f27
+Store Password (API/Secret Key): tasku6a5766d3d7f27@ssl
+and make a postman collection for the payment api testing.
+
+already apply my another project bellow link:
+https://github.com/sobujsoft/b9-ecom-shop/tree/feat/ssl-in-tegrate
+
+
+
+1. Create Api Controller:
+Command: php artisan make:controller Api/SslCommerzController
+
+Edit app/Http/Controllers/Api/SslCommerzController.php:
+-------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Order;
+use App\Models\Payment;
+use HasinHayder\Sslcommerz\Facades\Sslcommerz;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
+
+class SslCommerzController extends Controller
+{
+    public function initiate(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'order_id' => ['required', 'integer', 'exists:orders,id'],
+            'customer_name' => ['required', 'string', 'max:150'],
+            'phone' => ['required', 'string', 'max:20'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'address' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $order = Order::findOrFail($data['order_id']);
+
+        if ((float) $order->total <= 0) {
+            throw ValidationException::withMessages([
+                'order_id' => 'The selected order must have a positive total amount.',
+            ]);
+        }
+
+        $itemQty = max(1, (int) $order->items()->sum('quantity'));
+        $paymentResponse = Sslcommerz::setOrder(
+            (float) $order->total,
+            (string) $order->order_number,
+            'Order ' . $order->order_number,
+            'ecommerce'
+        )
+            ->setCustomer(
+                (string) $data['customer_name'],
+                (string) $data['email'],
+                (string) $data['phone'],
+                (string) $data['address'],
+                'Dhaka',
+                'Dhaka',
+                '1200',
+                'Bangladesh'
+            )
+            ->setShippingInfo(
+                $itemQty,
+                (string) $data['address'],
+                (string) $data['customer_name'],
+                $order->district ?? 'Dhaka',
+                $order->area ?? 'Dhaka',
+                '1200',
+                'Bangladesh'
+            )
+            ->setCallbackUrls(
+                route('sslc.success'),
+                route('sslc.failure'),
+                route('sslc.cancel'),
+                route('sslc.ipn')
+            )
+            ->setProductProfile(config('sslcommerz.product_profile', 'general'))
+            ->makePayment();
+
+        $payment = Payment::query()
+            ->where('order_id', $order->id)
+            ->latest()
+            ->first();
+
+        $paymentData = [
+            'order_id' => $order->id,
+            'gateway' => 'sslcommerz',
+            'transaction_id' => (string) $order->order_number,
+            'amount' => (float) $order->total,
+            'currency' => config('sslcommerz.store.currency', 'BDT'),
+            'status' => $paymentResponse->success() ? 'initiated' : 'failed',
+            'raw_response' => $paymentResponse->toArray(),
+        ];
+
+        if ($payment) {
+            $payment->update($paymentData);
+        } else {
+            $payment = Payment::create($paymentData);
+        }
+
+        $order->update([
+            'payment_method' => 'sslcommerz',
+            'payment_status' => $paymentResponse->success() ? 'pending' : 'failed',
+            'status' => $paymentResponse->success() ? 'pending' : 'cancelled',
+        ]);
+
+        if ($paymentResponse->success() && $paymentResponse->gatewayPageURL()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'SSLCommerz payment initiated successfully.',
+                'redirect_url' => $paymentResponse->gatewayPageURL(),
+                'transaction_id' => $payment->transaction_id,
+                'payment_id' => $payment->id,
+                'order_id' => $order->id,
+            ], Response::HTTP_OK);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $paymentResponse->failedReason() ?? 'Unable to initialize SSLCommerz payment.',
+            'transaction_id' => $payment->transaction_id,
+            'order_id' => $order->id,
+        ], Response::HTTP_BAD_REQUEST);
+    }
+
+    public function success(Request $request): JsonResponse
+    {
+        return $this->finalize($request, 'success', 'paid', 'processing');
+    }
+
+    public function failure(Request $request): JsonResponse
+    {
+        return $this->finalize($request, 'failed', 'failed', 'cancelled');
+    }
+
+    public function cancel(Request $request): JsonResponse
+    {
+        return $this->finalize($request, 'cancelled', 'cancelled', 'cancelled');
+    }
+
+    public function ipn(Request $request): JsonResponse
+    {
+        return $this->finalize($request, 'success', 'paid', 'processing');
+    }
+
+    private function finalize(Request $request, string $paymentStatus, string $orderPaymentStatus, string $orderStatus): JsonResponse
+    {
+        $transactionId = (string) $request->input('tran_id', $request->input('tran_id', ''));
+        $order = Order::where('order_number', $transactionId)->first();
+
+        if ($order === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order not found.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $payment = Payment::query()
+            ->where('order_id', $order->id)
+            ->where('transaction_id', $transactionId)
+            ->latest()
+            ->first();
+
+        if ($payment === null) {
+            $payment = $order->payments()->create([
+                'transaction_id' => $transactionId,
+                'amount' => (float) $order->total,
+                'currency' => config('sslcommerz.store.currency', 'BDT'),
+                'status' => 'initiated',
+                'raw_response' => $request->all(),
+            ]);
+        }
+
+        $payment->update([
+            'val_id' => $request->input('val_id'),
+            'status' => $paymentStatus,
+            'card_type' => $request->input('card_type'),
+            'bank_tran_id' => $request->input('bank_tran_id'),
+            'store_amount' => $request->input('store_amount'),
+            'raw_response' => array_merge((array) $payment->raw_response, $request->all()),
+            'paid_at' => $paymentStatus === 'success' ? now() : null,
+        ]);
+
+        $order->update([
+            'payment_method' => 'sslcommerz',
+            'payment_status' => $orderPaymentStatus,
+            'status' => $orderStatus,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment callback processed successfully.',
+            'transaction_id' => $transactionId,
+            'order_id' => $order->id,
+            'payment_status' => $paymentStatus,
+        ], Response::HTTP_OK);
+    }
+}
+
+
+
+
+2. Edit bootstrap/app.php:
+--------------------------
+<?php
+
+use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\HandleAppearance;
+use App\Http\Middleware\HandleInertiaRequests;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__ . '/../routes/web.php',
+        api: __DIR__ . '/../routes/api.php',
+        commands: __DIR__ . '/../routes/console.php',
+        health: '/up',
+        then: function () {
+            Route::middleware('web')
+                ->group(__DIR__ . '/../routes/admin.php');
+        },
+    )
+    ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->alias([
+            'admin' => EnsureUserIsAdmin::class,
+        ]);
+
+        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        $middleware->web(append: [
+            HandleAppearance::class,
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
+        ]);
+    })
+    ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(
+            fn(Request $request) => $request->is('api/*'),
+        );
+    })->create();
+
+
+
+
+
+
+3. Create api.php route
+-----------------------
+Edit routes/api.php:
+--------------------
+<?php
+
+use App\Http\Controllers\Api\SslCommerzController;
+use Illuminate\Support\Facades\Route;
+
+Route::post('/sslcommerz/initiate', [SslCommerzController::class, 'initiate'])->name('api.sslcommerz.initiate');
+Route::post('/sslcommerz/success', [SslCommerzController::class, 'success'])->name('sslc.success');
+Route::post('/sslcommerz/failure', [SslCommerzController::class, 'failure'])->name('sslc.failure');
+Route::post('/sslcommerz/cancel', [SslCommerzController::class, 'cancel'])->name('sslc.cancel');
+Route::post('/sslcommerz/ipn', [SslCommerzController::class, 'ipn'])->name('sslc.ipn');
+
+
+
+
+
+
+OrderService.php
+CheckoutController.php
+StoreCheckoutRequest.php
+web.php
+app.php
+Checkout.vue
+.env
+phpunit.xml
+OrderFactory.php
+SslcommerzPaymentServices.php
+InitiatePaymentRequest.php
+RefundPaymentRequest.php
+PaymentController.php
+SslcommerzCallBackController.php
+api.php
+sslcommerz.php
+Payment.php

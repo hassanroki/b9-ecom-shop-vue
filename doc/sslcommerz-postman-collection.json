@@ -1,0 +1,107 @@
+{
+  "info": {
+    "name": "SSLCommerz API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Initiate Payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": 1,\n  \"customer_name\": \"Test Customer\",\n  \"phone\": \"01712345678\",\n  \"email\": \"customer@example.com\",\n  \"address\": \"House 1, Road 1, Dhaka\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/sslcommerz/initiate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "sslcommerz",
+            "initiate"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Success Callback",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tran_id\": \"SE-2026-000001\",\n  \"val_id\": \"val-123\",\n  \"amount\": \"500\",\n  \"status\": \"VALIDATED\",\n  \"card_type\": \"VISA\",\n  \"bank_tran_id\": \"bank-123\",\n  \"store_amount\": \"500\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/sslcommerz/success",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "sslcommerz",
+            "success"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Failure Callback",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tran_id\": \"SE-2026-000001\",\n  \"status\": \"FAILED\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/sslcommerz/failure",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "sslcommerz",
+            "failure"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    }
+  ]
+}
