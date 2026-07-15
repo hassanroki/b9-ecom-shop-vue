@@ -1,0 +1,107 @@
+7. Laravel E-commerce Order Management:
+---------------------------------------
+
+1. Edit Order Model:
+--------------------
+Edit app/Models/Order.php:
+--------------------------
+
+
+2. Edit Order Item Model:
+--------------------
+Edit app/Models/OrderItem.php:
+------------------------------
+
+
+
+3. Edit OrderStatusHistory Model:
+--------------------------------
+Edit app/Models/OrderStatusHistory.php:
+---------------------------------------
+
+
+
+4. Edit Order Service:
+----------------------
+Edit app/Services/OrderService.php:
+-----------------------------------
+
+
+5. Create Order Page:
+---------------------
+Edit resources/js/pages/admin/orders/Index.vue:
+-----------------------------------------------
+
+
+6. Create Show Page:
+---------------------
+Edit resources/js/pages/admin/orders/Show.vue:
+-----------------------------------------------
+
+
+7. Edit admin.ts types:
+-----------------------
+Edit resources/js/types/admin.ts:
+---------------------------------
+
+
+8. Create index.ts for orders:
+------------------------------
+Edit resources/js/routes/admin/orders/index.ts:
+------------------------------------------------
+
+
+9. Create Order Controller:
+---------------------------
+Command: php artisan make:controller Admin/OrderController
+
+Edit app/Http/Controllers/Admin/OrderController.php:
+----------------------------------------------------
+
+
+
+10. Create OrderValidationRules.php Concerns:
+--------------------------------------------
+Edit app/Concerns/OrderValidationRules.php:
+-------------------------------------------
+
+
+
+11. Create UpdateOrderRequest:
+------------------------------
+Edit app/Http/Requests/Admin/UpdateOrderRequest.php:
+----------------------------------------------------
+
+
+
+12. Edit AppSidebar Components
+------------------------------
+Edit resources/js/components/AppSidebar.vue:
+--------------------------------------------
+
+
+13. Edit routes/admin.php:
+--------------------------
+
+
+14. Create Components OrderStatusForm.vue:
+------------------------------------------
+Edit resources/js/components/admin/OrderStatusForm.vue:
+------------------------------------------------------
+
+
+15. Create OrderFactory.php:
+----------------------------
+Edit database/factories/OrderFactory.php:
+-----------------------------------------
+
+
+
+
+
+
+
+
+
+Hero Slider:
+------------
