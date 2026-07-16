@@ -1,0 +1,3365 @@
+11. Laravel E-commerce Coupon Backend & Frontend:
+-------------------------------------------------
+1. Create Migration and Model:
+------------------------------
+Command: php artisan make:model Coupon -m
+
+1.1 Edit database/migrations/2026_06_16_083702_create_coupons_table.php:
+------------------------------------------------------------------------
+Schema::create('coupons', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('code')->unique();
+            $table->text('description')->nullable();
+
+            // fixed / percentage
+            $table->enum('type', [
+                'fixed',
+                'percentage',
+            ]);
+            $table->decimal('value', 10, 2);
+
+            // Minimum order
+            $table->decimal('minimum_amount', 10, 2)
+                ->default(0);
+
+            // Maximum discount (percentage only)
+            $table->decimal('maximum_discount', 10, 2)
+                ->nullable();
+
+            // Total usage
+            $table->unsignedInteger('usage_limit')
+                ->nullable();
+
+            // Per customer
+            $table->unsignedInteger('usage_per_user')
+                ->default(1);
+
+            // Already used
+            $table->unsignedInteger('used_count')
+                ->default(0);
+
+            $table->boolean('is_active')
+                ->default(true);
+
+            $table->timestamp('starts_at')
+                ->nullable();
+            $table->timestamp('expires_at')
+                ->nullable();
+
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['is_active', 'expires_at']);
+        });
+
+
+
+
+
+
+1.2 Edit app/Http/Models/Coupon.php:
+------------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Coupon extends Model
+{
+    use SoftDeletes;
+
+    protected $fillable = [
+        'name',
+        'code',
+        'description',
+        'type',
+        'value',
+        'minimum_amount',
+        'maximum_discount',
+        'usage_limit',
+        'usage_per_user',
+        'is_active',
+        'starts_at',
+        'expires_at',
+    ];
+
+    protected $casts = [
+        'value' => 'decimal:2',
+        'minimum_amount' => 'decimal:2',
+        'maximum_discount' => 'decimal:2',
+        'starts_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'is_active' => 'boolean',
+    ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $coupon) {
+            $coupon->code = strtoupper($coupon->code);
+        });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scopes
+    |--------------------------------------------------------------------------
+    */
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeValid(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query
+                    ->whereNull('starts_at')
+                    ->orWhere('starts_at', '<=', now());
+            })
+            ->where(function ($query) {
+                $query
+                    ->whereNull('expires_at')
+                    ->orWhere('expires_at', '>=', now());
+            });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors
+    |--------------------------------------------------------------------------
+    */
+
+    protected function status(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+
+                if (!$this->is_active) {
+                    return 'Inactive';
+                }
+
+                if ($this->starts_at && now()->lt($this->starts_at)) {
+                    return 'Scheduled';
+                }
+
+                if ($this->expires_at && now()->gt($this->expires_at)) {
+                    return 'Expired';
+                }
+
+                return 'Active';
+            }
+        );
+    }
+
+    protected function formattedDiscount(): Attribute
+    {
+        return Attribute::make(
+            get: fn() => $this->type === 'fixed'
+                ? '৳' . $this->value
+                : $this->value . '%'
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helper Methods
+    |--------------------------------------------------------------------------
+    */
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at
+            ? now()->greaterThan($this->expires_at)
+            : false;
+    }
+
+    public function hasStarted(): bool
+    {
+        return $this->starts_at
+            ? now()->greaterThanOrEqualTo($this->starts_at)
+            : true;
+    }
+
+    public function isUsable(): bool
+    {
+        if (!$this->is_active) {
+            return false;
+        }
+
+        if (!$this->hasStarted()) {
+            return false;
+        }
+
+        if ($this->isExpired()) {
+            return false;
+        }
+
+        if (
+            !is_null($this->usage_limit) &&
+            $this->used_count >= $this->usage_limit
+        ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Atomically increment the used count.
+     * Use this instead of mass-assigning used_count.
+     */
+    public function recordUsage(): void
+    {
+        $this->increment('used_count');
+    }
+
+    protected $appends = ['status', 'formatted_discount'];
+}
+
+
+
+
+
+
+
+
+2. Add Column to orders Table:
+------------------------------
+2.1 Edit database/migrations/2026_06_25_070957_create_orders_table.php:
+------------------------------------------------------------------------
+Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('coupon_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+            $table->string('coupon_code')
+                ->nullable();
+            $table->decimal('discount_amount', 10, 2)
+                ->default(0);
+            $table->string('order_number', 32)->unique();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('customer_name', 150);
+            $table->string('phone', 20)->index();
+            $table->string('email');
+            $table->string('district', 100);
+            $table->string('area', 150);
+            $table->text('address');
+            $table->text('notes')->nullable();
+            $table->decimal('subtotal', 12, 2);
+            $table->decimal('delivery_charge', 10, 2)->default(0);
+            $table->decimal('total', 12, 2);
+            $table->enum('payment_method', ['cod', 'sslcommerz']);
+            $table->enum('payment_status', ['pending', 'paid', 'failed', 'cancelled'])->default('pending')->index();
+            $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])->default('pending')->index();
+            $table->timestamp('placed_at')->nullable();
+            $table->timestamps();
+
+            $table->index('created_at');
+        });
+
+
+
+
+
+
+
+
+2.2 Edit Model Order:
+---------------------
+Edit app/Http/Models/Order.php:
+-------------------------------
+<?php
+
+namespace App\Models;
+
+use App\Models\Coupon;
+use Database\Factories\OrderFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+#[Fillable([
+    'coupon_id',
+    'coupon_code',
+    'discount_amount',
+    'order_number',
+    'user_id',
+    'customer_name',
+    'phone',
+    'email',
+    'district',
+    'area',
+    'address',
+    'notes',
+    'subtotal',
+    'delivery_charge',
+    'total',
+    'payment_method',
+    'payment_status',
+    'status',
+    'placed_at',
+])]
+class Order extends Model
+{
+    /** @use HasFactory<OrderFactory> */
+    use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'subtotal' => 'decimal:2',
+            'delivery_charge' => 'decimal:2',
+            'total' => 'decimal:2',
+            'placed_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'delivery_charge' => 0,
+        'payment_status' => 'pending',
+        'status' => 'pending',
+    ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
+    }
+
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(OrderStatusHistory::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+}
+
+
+
+
+
+3. Create CouponController.php Controller:
+------------------------------------------
+Command: php artisan make:controller Admin/CouponController
+
+Edit app/Http/Controllers/Admin/CouponController.php:
+-----------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreCouponRequest;
+use App\Http\Requests\Admin\UpdateCouponRequest;
+use App\Models\Coupon;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class CouponController extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     */
+    public function index(Request $request): Response
+    {
+        $coupons = Coupon::query()
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = $request->search;
+
+                $query->where(function ($query) use ($search) {
+                    $query
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%");
+                });
+            })
+            ->when($request->filled('status'), function ($query) use ($request) {
+                match ($request->status) {
+                    'active' => $query
+                        ->where('is_active', true)
+                        ->where(function ($q) {
+                            $q->whereNull('starts_at')
+                                ->orWhere('starts_at', '<=', now());
+                        })
+                        ->where(function ($q) {
+                            $q->whereNull('expires_at')
+                                ->orWhere('expires_at', '>=', now());
+                        }),
+
+                    'inactive' => $query->where('is_active', false),
+
+                    'expired' => $query
+                        ->whereNotNull('expires_at')
+                        ->where('expires_at', '<', now()),
+
+                    'scheduled' => $query
+                        ->whereNotNull('starts_at')
+                        ->where('starts_at', '>', now()),
+
+                    default => null,
+                };
+            })
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
+
+        return Inertia::render('admin/coupons/Index', [
+            'coupons' => $coupons,
+            'filters' => $request->only(['search', 'status']),
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     */
+    public function create(): Response
+    {
+        return Inertia::render('admin/coupons/Create');
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(StoreCouponRequest $request): RedirectResponse
+    {
+        Coupon::create($request->validated());
+
+        return redirect()
+            ->route('admin.coupons.index')
+            ->with('success', 'Coupon created successfully.');
+    }
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(Coupon $coupon): Response
+    {
+        return Inertia::render('admin/coupons/Show', [
+            'coupon' => $coupon,
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(Coupon $coupon): Response
+    {
+        return Inertia::render('admin/coupons/Edit', [
+            'coupon' => [
+                ...$coupon->toArray(),
+                'starts_at' => $coupon->starts_at?->format('Y-m-d\TH:i'),
+                'expires_at' => $coupon->expires_at?->format('Y-m-d\TH:i'),
+            ],
+        ]);
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(UpdateCouponRequest $request, Coupon $coupon): RedirectResponse
+    {
+        $coupon->update($request->validated());
+
+        return redirect()
+            ->route('admin.coupons.index')
+            ->with('success', 'Coupon updated successfully.');
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy(Coupon $coupon): RedirectResponse
+    {
+        $coupon->delete();
+
+        return redirect()
+            ->route('admin.coupons.index')
+            ->with('success', 'Coupon deleted successfully.');
+    }
+}
+
+
+
+
+
+
+
+4. Create Concerns/Trait CouponValidationRules.php:
+---------------------------------------------------
+Edit app/Concerns/CouponValidationRules.php:
+---------------------------------------------
+<?php
+
+namespace App\Concerns;
+
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
+
+trait CouponValidationRules
+{
+    protected function couponRules(?int $couponId = null): array
+    {
+        return [
+
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+            ],
+
+            'code' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('coupons', 'code')->ignore($couponId),
+            ],
+
+            'description' => [
+                'nullable',
+                'string',
+            ],
+
+            'type' => [
+                'required',
+                Rule::in([
+                    'fixed',
+                    'percentage',
+                ]),
+            ],
+
+            'value' => [
+                'required',
+                'numeric',
+                'min:0.01',
+            ],
+
+            'minimum_amount' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+
+            'maximum_discount' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+
+            'usage_limit' => [
+                'nullable',
+                'integer',
+                'min:1',
+            ],
+
+            'usage_per_user' => [
+                'required',
+                'integer',
+                'min:1',
+            ],
+
+            'is_active' => [
+                'required',
+                'boolean',
+            ],
+
+            'starts_at' => [
+                'nullable',
+                'date',
+            ],
+
+            'expires_at' => [
+                'nullable',
+                'date',
+                'after_or_equal:starts_at',
+            ],
+        ];
+    }
+
+    protected function couponMessages(): array
+    {
+        return [
+            'code.unique' => 'Coupon code already exists.',
+            'expires_at.after_or_equal' => 'Expiry date must be after start date.',
+            'value.min' => 'Discount value must be greater than zero.',
+            'usage_per_user.min' => 'Usage per user must be at least 1.',
+        ];
+    }
+
+    protected function normalizeCouponCode(): void
+    {
+        $this->merge([
+            'code' => strtoupper(trim((string) $this->code)),
+        ]);
+    }
+
+    protected function validateCouponBusinessRules(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+
+            if (
+                $this->type === 'percentage' &&
+                (float) $this->value > 100
+            ) {
+                $validator->errors()->add(
+                    'value',
+                    'Percentage cannot exceed 100.'
+                );
+            }
+
+            if (
+                $this->type === 'fixed' &&
+                !empty($this->maximum_discount)
+            ) {
+                $validator->errors()->add(
+                    'maximum_discount',
+                    'Maximum discount is only available for percentage coupons.'
+                );
+            }
+        });
+    }
+}
+
+
+
+
+
+
+
+5. Create StoreCouponRequest.php & UpdateCouponRequest.php Request:
+--------------------------------------------------------------------
+5.1 Edit app/Http/Requests/Admin/StoreCouponRequest.php:
+---------------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Admin;
+
+use App\Concerns\CouponValidationRules;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
+
+class StoreCouponRequest extends FormRequest
+{
+    use CouponValidationRules;
+
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return $this->couponRules();
+    }
+
+    public function messages(): array
+    {
+        return $this->couponMessages();
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->normalizeCouponCode();
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $this->validateCouponBusinessRules($validator);
+    }
+}
+
+
+
+
+
+
+5.2 Edit app/Http/Requests/Admin/UpdateCouponRequest.php:
+---------------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Admin;
+
+use App\Concerns\CouponValidationRules;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
+
+class UpdateCouponRequest extends FormRequest
+{
+    use CouponValidationRules;
+
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return $this->couponRules(
+            $this->route('coupon')?->id
+        );
+    }
+
+    public function messages(): array
+    {
+        return $this->couponMessages();
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->normalizeCouponCode();
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $this->validateCouponBusinessRules($validator);
+    }
+}
+
+
+
+
+
+
+6. Edit routes/admin.php:
+-------------------------
+<?php
+
+use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\WishlistController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware(['auth', 'verified', 'admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::resource('categories', CategoryController::class);
+        Route::resource('products', ProductController::class);
+        Route::resource('orders', OrderController::class)->only(['index', 'show', 'update']);
+        Route::resource('wishlists', WishlistController::class)->only(['index']);
+        Route::resource('coupons', CouponController::class);
+    });
+
+
+
+
+
+
+
+7. Edit admin.ts types:
+-----------------------
+Edit resources/js/types/admin.ts:
+---------------------------------
+export interface AdminCoupon {
+    id: number;
+    name: string;
+    code: string;
+    description: string | null;
+    type: 'fixed' | 'percentage';
+    value: string;
+    minimum_amount: string;
+    maximum_discount: string | null;
+    usage_limit: number | null;
+    usage_per_user: number;
+    used_count: number;
+    is_active: boolean;
+    starts_at: string | null;
+    expires_at: string | null;
+    created_at: string;
+    updated_at: string;
+    status: string;
+    formatted_discount: string;
+}
+
+export interface Paginated<T> {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+    links: {
+        url: string | null;
+        label: string;
+        active: boolean;
+    }[];
+}
+
+export interface CouponFormData {
+    name: string;
+    code: string;
+    description: string;
+    type: 'fixed' | 'percentage';
+    value: string;
+    minimum_amount: string;
+    maximum_discount: string;
+    usage_limit: string;
+    usage_per_user: number;
+    starts_at: string;
+    expires_at: string;
+    is_active: boolean;
+}
+
+
+
+
+
+
+8. Create Index.vue, Edit.vue, Show.vue, Create.vue Pages:
+----------------------------------------------------------
+8.1 Edit resources/js/pages/admin/coupons/Index.vue:
+----------------------------------------------------
+<script setup lang="ts">
+import { ref, watch } from 'vue';
+import { Form, Head, Link, router } from '@inertiajs/vue3';
+import { Eye, Pencil, Plus, Search, Trash2 } from '@lucide/vue';
+import CouponController from '@/actions/App/Http/Controllers/Admin/CouponController';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { dashboard } from '@/routes';
+import { create, edit, index, show } from '@/routes/admin/coupons';
+import type { AdminCoupon, Paginated } from '@/types/admin';
+
+const props = defineProps<{
+    coupons: Paginated<AdminCoupon>;
+    filters: {
+        search?: string;
+        status?: string;
+    };
+}>();
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
+            {
+                title: 'Coupons',
+                href: index(),
+            },
+        ],
+    },
+});
+
+const search = ref(props.filters.search ?? '');
+const status = ref(props.filters.status ?? 'all');
+
+let timer: ReturnType<typeof setTimeout>;
+
+watch([search, status], () => {
+    clearTimeout(timer);
+
+    timer = setTimeout(() => {
+        router.get(
+            index(),
+            {
+                search: search.value,
+                status: status.value === 'all' ? '' : status.value,
+            },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
+    }, 400);
+});
+</script>
+
+<template>
+    <Head title="Coupons" />
+
+    <div
+        class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
+    >
+        <div
+            class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
+        >
+            <Heading
+                title="Coupons"
+                description="Manage discount coupons for your store."
+            />
+
+            <Button as-child>
+                <Link :href="create()">
+                    <Plus class="size-4" />
+                    Add Coupon
+                </Link>
+            </Button>
+        </div>
+
+        <div
+            class="flex flex-col gap-4 rounded-xl border border-sidebar-border/70 p-4 lg:flex-row"
+        >
+            <div class="relative flex-1">
+                <Search
+                    class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                    v-model="search"
+                    class="pl-10"
+                    placeholder="Search coupon by name or code..."
+                />
+            </div>
+
+            <Select v-model="status">
+                <SelectTrigger class="w-full lg:w-[220px]">
+                    <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="expired">Expired</SelectItem>
+                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                </SelectContent>
+            </Select>
+        </div>
+
+        <div
+            class="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
+        >
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[1200px] text-sm">
+                    <thead class="border-b bg-muted/40 text-left">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Code</th>
+                            <th class="px-4 py-3 font-medium">Coupon</th>
+                            <th class="px-4 py-3 font-medium">Discount</th>
+                            <th class="px-4 py-3 font-medium">Usage</th>
+                            <th class="px-4 py-3 font-medium">Validity</th>
+                            <th class="px-4 py-3 font-medium">Status</th>
+                            <th class="px-4 py-3 text-right font-medium">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="coupon in coupons.data"
+                            :key="coupon.id"
+                            class="border-b last:border-b-0"
+                        >
+                            <td class="px-4 py-3">
+                                <Badge variant="outline">
+                                    {{ coupon.code }}
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="font-medium">
+                                    {{ coupon.name }}
+                                </div>
+                                <div
+                                    v-if="coupon.description"
+                                    class="mt-1 text-xs text-muted-foreground"
+                                >
+                                    {{ coupon.description }}
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <Badge
+                                    :variant="
+                                        coupon.type === 'percentage'
+                                            ? 'default'
+                                            : 'secondary'
+                                    "
+                                >
+                                    {{ coupon.formatted_discount }}
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="font-medium">
+                                    {{ coupon.used_count }}
+                                    <span v-if="coupon.usage_limit">
+                                        / {{ coupon.usage_limit }}
+                                    </span>
+                                    <span v-else class="text-muted-foreground">
+                                        / Unlimited
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="space-y-1 text-xs">
+                                    <div>
+                                        <span class="font-medium">Start:</span>
+                                        {{ coupon.starts_at ?? '-' }}
+                                    </div>
+                                    <div>
+                                        <span class="font-medium">Expire:</span>
+                                        {{ coupon.expires_at ?? 'Never' }}
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <Badge
+                                    :variant="
+                                        coupon.status === 'Active'
+                                            ? 'default'
+                                            : coupon.status === 'Scheduled'
+                                              ? 'secondary'
+                                              : 'destructive'
+                                    "
+                                >
+                                    {{ coupon.status }}
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div
+                                    class="flex items-center justify-end gap-2"
+                                >
+                                    <Button
+                                        as-child
+                                        variant="outline"
+                                        size="sm"
+                                    >
+                                        <Link :href="show(coupon.id)">
+                                            <Eye class="size-4" />
+                                            View
+                                        </Link>
+                                    </Button>
+                                    <Button
+                                        as-child
+                                        variant="outline"
+                                        size="sm"
+                                    >
+                                        <Link :href="edit(coupon.id)">
+                                            <Pencil class="size-4" />
+                                            Edit
+                                        </Link>
+                                    </Button>
+                                    <Dialog>
+                                        <DialogTrigger as-child>
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                            >
+                                                <Trash2 class="size-4" />
+                                                Delete
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <Form
+                                                v-bind="
+                                                    CouponController.destroy.form(
+                                                        coupon.id,
+                                                    )
+                                                "
+                                                :options="{
+                                                    preserveScroll: true,
+                                                }"
+                                                v-slot="{ processing }"
+                                            >
+                                                <DialogHeader>
+                                                    <DialogTitle>
+                                                        Delete Coupon?
+                                                    </DialogTitle>
+                                                    <DialogDescription>
+                                                        This will permanently
+                                                        remove
+                                                        <strong>{{
+                                                            coupon.code
+                                                        }}</strong>
+                                                        from your store.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+
+                                                <DialogFooter class="gap-2">
+                                                    <DialogClose as-child>
+                                                        <Button
+                                                            type="button"
+                                                            variant="secondary"
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                    </DialogClose>
+                                                    <Button
+                                                        type="submit"
+                                                        variant="destructive"
+                                                        :disabled="processing"
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </DialogFooter>
+                                            </Form>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr v-if="coupons.data.length === 0">
+                            <td
+                                colspan="7"
+                                class="px-4 py-12 text-center text-muted-foreground"
+                            >
+                                No coupons found.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div
+                v-if="coupons.links.length > 3"
+                class="flex flex-col items-center justify-between gap-4 border-t px-4 py-4 sm:flex-row"
+            >
+                <div class="text-sm text-muted-foreground">
+                    Showing
+                    <span class="font-medium">{{ coupons.from ?? 0 }}</span>
+                    to
+                    <span class="font-medium">{{ coupons.to ?? 0 }}</span>
+                    of
+                    <span class="font-medium">{{ coupons.total }}</span>
+                    coupons
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <template v-for="link in coupons.links" :key="link.label">
+                        <Button
+                            v-if="link.url"
+                            as-child
+                            :variant="link.active ? 'default' : 'outline'"
+                            size="sm"
+                        >
+                            <Link
+                                :href="link.url"
+                                preserve-scroll
+                                preserve-state
+                                v-html="link.label"
+                            />
+                        </Button>
+
+                        <Button
+                            v-else
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            v-html="link.label"
+                        />
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
+8.2 Edit resources/js/pages/admin/coupons/Create.vue:
+----------------------------------------------------
+<script setup lang="ts">
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import CouponController from '@/actions/App/Http/Controllers/Admin/CouponController';
+import CouponForm from '@/components/admin/CouponForm.vue';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { dashboard } from '@/routes';
+import { create, index } from '@/routes/admin/coupons';
+import type { CouponFormData } from '@/types/admin';
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
+            {
+                title: 'Coupons',
+                href: index(),
+            },
+            {
+                title: 'Create',
+                href: create(),
+            },
+        ],
+    },
+});
+
+const form = useForm<CouponFormData>({
+    name: '',
+    code: '',
+    description: '',
+    type: 'percentage',
+    value: '',
+    minimum_amount: '',
+    maximum_discount: '',
+    usage_limit: '',
+    usage_per_user: 1,
+    starts_at: '',
+    expires_at: '',
+    is_active: true,
+});
+
+function submit(): void {
+    form.post(CouponController.store.url(), {
+        preserveScroll: true,
+    });
+}
+</script>
+
+<template>
+    <Head title="Create coupon" />
+
+    <div
+        class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
+    >
+        <Heading
+            title="Create coupon"
+            description="Add a new discount coupon for your store"
+        />
+
+        <div
+            class="max-w-2xl rounded-xl border border-sidebar-border/70 p-6 dark:border-sidebar-border"
+        >
+            <form class="space-y-6" @submit.prevent="submit">
+                <CouponForm :form="form" />
+
+                <div class="flex items-center gap-3">
+                    <Button type="submit" :disabled="form.processing">
+                        Create coupon
+                    </Button>
+                    <Button as-child variant="outline">
+                        <Link :href="index()">Cancel</Link>
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+8.3 Edit resources/js/pages/admin/coupons/Show.vue:
+----------------------------------------------------
+<script setup lang="ts">
+import { Head, Link, setLayoutProps } from '@inertiajs/vue3';
+import { Pencil } from '@lucide/vue';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { dashboard } from '@/routes';
+import { edit, index, show } from '@/routes/admin/coupons';
+import type { AdminCoupon } from '@/types/admin';
+
+const props = defineProps<{
+    coupon: AdminCoupon;
+}>();
+
+setLayoutProps({
+    breadcrumbs: [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+        },
+        {
+            title: 'Coupons',
+            href: index(),
+        },
+        {
+            title: props.coupon.code,
+            href: show(props.coupon.id),
+        },
+    ],
+});
+</script>
+
+<template>
+    <Head :title="coupon.name" />
+
+    <div
+        class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
+    >
+        <div
+            class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+            <Heading :title="coupon.name" description="Coupon details" />
+
+            <Button as-child>
+                <Link :href="edit(coupon.id)">
+                    <Pencil class="size-4" />
+                    Edit coupon
+                </Link>
+            </Button>
+        </div>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Details</CardTitle>
+                <CardDescription> Overview of this coupon </CardDescription>
+            </CardHeader>
+            <CardContent class="grid gap-4">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Code</p>
+                        <Badge variant="outline" class="w-fit">
+                            {{ coupon.code }}
+                        </Badge>
+                    </div>
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Status</p>
+                        <Badge
+                            :variant="
+                                coupon.status === 'Active'
+                                    ? 'default'
+                                    : coupon.status === 'Scheduled'
+                                      ? 'secondary'
+                                      : 'destructive'
+                            "
+                            class="w-fit"
+                        >
+                            {{ coupon.status }}
+                        </Badge>
+                    </div>
+                </div>
+
+                <div class="grid gap-1">
+                    <p class="text-sm text-muted-foreground">Description</p>
+                    <p class="font-medium">
+                        {{ coupon.description || 'No description provided.' }}
+                    </p>
+                </div>
+
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Discount Type
+                        </p>
+                        <p class="font-medium capitalize">
+                            {{ coupon.type }}
+                        </p>
+                    </div>
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Discount Value
+                        </p>
+                        <p class="font-medium">
+                            {{ coupon.formatted_discount }}
+                        </p>
+                    </div>
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Maximum Discount
+                        </p>
+                        <p class="font-medium">
+                            {{ coupon.maximum_discount ?? 'No limit' }}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Minimum Order
+                        </p>
+                        <p class="font-medium">
+                            {{ coupon.minimum_amount }}
+                        </p>
+                    </div>
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Usage</p>
+                        <p class="font-medium">
+                            {{ coupon.used_count }}
+                            <span v-if="coupon.usage_limit">
+                                / {{ coupon.usage_limit }}
+                            </span>
+                            <span v-else class="text-muted-foreground">
+                                / Unlimited
+                            </span>
+                        </p>
+                    </div>
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Usage Per User
+                        </p>
+                        <p class="font-medium">
+                            {{ coupon.usage_per_user }}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Starts At</p>
+                        <p class="font-medium">
+                            {{ coupon.starts_at ?? 'Immediately' }}
+                        </p>
+                    </div>
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Expires At</p>
+                        <p class="font-medium">
+                            {{ coupon.expires_at ?? 'Never' }}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Created</p>
+                        <p class="font-medium">
+                            {{ new Date(coupon.created_at).toLocaleString() }}
+                        </p>
+                    </div>
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Updated</p>
+                        <p class="font-medium">
+                            {{ new Date(coupon.updated_at).toLocaleString() }}
+                        </p>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    </div>
+</template>
+
+
+
+
+
+
+8.4 Edit resources/js/pages/admin/coupons/Edit.vue:
+----------------------------------------------------
+<script setup lang="ts">
+import { Head, Link, setLayoutProps, useForm } from '@inertiajs/vue3';
+import CouponController from '@/actions/App/Http/Controllers/Admin/CouponController';
+import CouponForm from '@/components/admin/CouponForm.vue';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { dashboard } from '@/routes';
+import { edit, index } from '@/routes/admin/coupons';
+import type { AdminCoupon, CouponFormData } from '@/types/admin';
+
+const props = defineProps<{
+    coupon: AdminCoupon;
+}>();
+
+setLayoutProps({
+    breadcrumbs: [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+        },
+        {
+            title: 'Coupons',
+            href: index(),
+        },
+        {
+            title: `Edit ${props.coupon.name}`,
+            href: edit(props.coupon.id),
+        },
+    ],
+});
+
+const form = useForm<CouponFormData>({
+    name: props.coupon.name,
+    code: props.coupon.code,
+    description: props.coupon.description ?? '',
+    type: props.coupon.type,
+    value: props.coupon.value,
+    minimum_amount: props.coupon.minimum_amount,
+    maximum_discount: props.coupon.maximum_discount ?? '',
+    usage_limit: props.coupon.usage_limit?.toString() ?? '',
+    usage_per_user: props.coupon.usage_per_user,
+    starts_at: props.coupon.starts_at ?? '',
+    expires_at: props.coupon.expires_at ?? '',
+    is_active: props.coupon.is_active,
+});
+
+function submit(): void {
+    form.put(CouponController.update.url(props.coupon.id), {
+        preserveScroll: true,
+    });
+}
+</script>
+
+<template>
+    <Head :title="`Edit ${coupon.name}`" />
+
+    <div
+        class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
+    >
+        <Heading
+            :title="`Edit ${coupon.name}`"
+            description="Update coupon details"
+        />
+
+        <div
+            class="max-w-2xl rounded-xl border border-sidebar-border/70 p-6 dark:border-sidebar-border"
+        >
+            <form class="space-y-6" @submit.prevent="submit">
+                <CouponForm :form="form" :coupon="coupon" />
+
+                <div class="flex items-center gap-3">
+                    <Button type="submit" :disabled="form.processing">
+                        Save changes
+                    </Button>
+                    <Button as-child variant="outline">
+                        <Link :href="index()">Cancel</Link>
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
+9. Edit AppSidebar.vue Components:
+----------------------------------
+Edit resources/js/components/AppSidebar.vue:
+--------------------------------------------
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import {
+    BookOpen,
+    FolderGit2,
+    Heart,
+    LayoutGrid,
+    Package,
+    ShoppingCart,
+    Tags,
+    Ticket,
+} from '@lucide/vue';
+import AppLogo from '@/components/AppLogo.vue';
+import NavFooter from '@/components/NavFooter.vue';
+import NavMain from '@/components/NavMain.vue';
+import NavUser from '@/components/NavUser.vue';
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { dashboard } from '@/routes';
+import { index as categoriesIndex } from '@/routes/admin/categories';
+import { index as couponsIndex } from '@/routes/admin/coupons';
+import { index as ordersIndex } from '@/routes/admin/orders';
+import { index as productsIndex } from '@/routes/admin/products';
+import { index as wishlistsIndex } from '@/routes/admin/wishlists';
+import type { NavItem } from '@/types';
+
+const mainNavItems: NavItem[] = [
+    {
+        title: 'Dashboard',
+        href: dashboard(),
+        icon: LayoutGrid,
+    },
+    {
+        title: 'Categories',
+        href: categoriesIndex(),
+        icon: Tags,
+    },
+    {
+        title: 'Products',
+        href: productsIndex(),
+        icon: Package,
+    },
+    {
+        title: 'Coupons',
+        href: couponsIndex(),
+        icon: Ticket,
+    },
+    {
+        title: 'Orders',
+        href: ordersIndex(),
+        icon: ShoppingCart,
+    },
+    {
+        title: 'Wishlists',
+        href: wishlistsIndex(),
+        icon: Heart,
+    },
+];
+
+const footerNavItems: NavItem[] = [
+    {
+        title: 'Repository',
+        href: 'https://github.com/laravel/vue-starter-kit',
+        icon: FolderGit2,
+    },
+    {
+        title: 'Documentation',
+        href: 'https://laravel.com/docs/starter-kits#vue',
+        icon: BookOpen,
+    },
+];
+</script>
+
+<template>
+    <Sidebar collapsible="icon" variant="inset">
+        <SidebarHeader>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton size="lg" as-child>
+                        <Link :href="dashboard()">
+                            <AppLogo />
+                        </Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent>
+            <NavMain :items="mainNavItems" />
+        </SidebarContent>
+
+        <SidebarFooter>
+            <NavFooter :items="footerNavItems" />
+            <NavUser />
+        </SidebarFooter>
+    </Sidebar>
+    <slot />
+</template>
+
+
+
+
+
+
+10. Create CouponForm.vue Components:
+-------------------------------------
+Edit resources/js/components/admin/CouponForm.vue:
+--------------------------------------------------
+<script setup lang="ts">
+import type { InertiaForm } from '@inertiajs/vue3';
+import InputError from '@/components/InputError.vue';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import type { AdminCoupon, CouponFormData } from '@/types/admin';
+
+type Props = {
+    form: InertiaForm<CouponFormData>;
+    coupon?: AdminCoupon;
+};
+
+defineProps<Props>();
+
+const inputClass =
+    'border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-24 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
+</script>
+
+<template>
+    <div class="grid gap-6">
+        <div class="grid gap-2">
+            <Label for="name">Coupon Name</Label>
+            <Input id="name" v-model="form.name" required placeholder="Summer Sale" />
+            <InputError :message="form.errors.name" />
+        </div>
+
+        <div class="grid gap-2">
+            <Label for="code">Coupon Code</Label>
+            <Input id="code" v-model="form.code" class="uppercase" required placeholder="SUMMER20" />
+            <p class="text-xs text-muted-foreground">
+                Example: SAVE100, EID25, NEWUSER
+            </p>
+            <InputError :message="form.errors.code" />
+        </div>
+
+        <div class="grid gap-2">
+            <Label for="description">Description</Label>
+            <textarea id="description" v-model="form.description" rows="4" :class="inputClass"
+                placeholder="Short description for this coupon" />
+            <InputError :message="form.errors.description" />
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2">
+            <div class="grid gap-2">
+                <Label>Discount Type</Label>
+                <Select v-model="form.type">
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="fixed">Fixed Amount</SelectItem>
+                        <SelectItem value="percentage">Percentage</SelectItem>
+                    </SelectContent>
+                </Select>
+                <InputError :message="form.errors.type" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="value">Discount Value</Label>
+                <Input id="value" v-model="form.value" type="number" step="0.01" min="0"
+                    :placeholder="form.type === 'percentage' ? '20' : '100'" />
+                <p class="text-xs text-muted-foreground">
+                    {{ form.type === 'percentage' ? 'Enter percentage (1-100)' : 'Enter fixed discount amount' }}
+                </p>
+                <InputError :message="form.errors.value" />
+            </div>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2">
+            <div class="grid gap-2">
+                <Label for="minimum_amount">Minimum Order Amount</Label>
+                <Input id="minimum_amount" v-model="form.minimum_amount" type="number" step="0.01" min="0"
+                    placeholder="1000" />
+                <InputError :message="form.errors.minimum_amount" />
+            </div>
+
+            <div v-if="form.type === 'percentage'" class="grid gap-2">
+                <Label for="maximum_discount">Maximum Discount</Label>
+                <Input id="maximum_discount" v-model="form.maximum_discount" type="number" step="0.01" min="0"
+                    placeholder="500" />
+                <p class="text-xs text-muted-foreground">
+                    Leave empty for no maximum limit.
+                </p>
+                <InputError :message="form.errors.maximum_discount" />
+            </div>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2">
+            <div class="grid gap-2">
+                <Label for="usage_limit">Total Usage Limit</Label>
+                <Input id="usage_limit" v-model="form.usage_limit" type="number" min="1" placeholder="100" />
+                <p class="text-xs text-muted-foreground">
+                    Leave empty for unlimited usage.
+                </p>
+                <InputError :message="form.errors.usage_limit" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="usage_per_user">Usage Per User</Label>
+                <Input id="usage_per_user" v-model="form.usage_per_user" type="number" min="1" />
+                <InputError :message="form.errors.usage_per_user" />
+            </div>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2">
+            <div class="grid gap-2">
+                <Label for="starts_at">Starts At</Label>
+                <Input id="starts_at" v-model="form.starts_at" type="datetime-local" />
+                <InputError :message="form.errors.starts_at" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="expires_at">Expires At</Label>
+                <Input id="expires_at" v-model="form.expires_at" type="datetime-local" />
+                <InputError :message="form.errors.expires_at" />
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <input id="is_active" v-model="form.is_active" type="checkbox" class="size-4 rounded border border-input" />
+            <Label for="is_active" class="cursor-pointer font-normal">
+                Active Coupon
+            </Label>
+            <InputError :message="form.errors.is_active" />
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
+11. Wayfinder regenerate:
+-------------------------
+Command: php artisan wayfinder:generate
+
+
+
+
+Frontend:
+=========
+12. Create CouponController Storefront:
+---------------------------------------
+Command: php artisan make:controller Storefront/CouponController
+
+Edit app/Http/Controller/Storefront/CouponController.php:
+---------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Services\CartService;
+use App\Services\CouponService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class CouponController extends Controller
+{
+    public function __construct(
+        private readonly CartService $cartService,
+        private readonly CouponService $couponService,
+    ) {}
+
+    /**
+     * Validate and apply a coupon code to the current cart session.
+     */
+    public function apply(Request $request): JsonResponse
+    {
+        $request->validate([
+            'code' => ['required', 'string', 'max:100'],
+            'email' => ['nullable', 'email'],
+            'phone' => ['nullable', 'string'],
+        ]);
+
+        $subtotal = $this->cartService->subtotal();
+
+        $result = $this->couponService->validate(
+            $request->string('code')->toString(),
+            $subtotal,
+            $request->input('email'),
+            $request->input('phone'),
+        );
+
+        if (!$result['valid']) {
+            return response()->json([
+                'message' => $result['message'],
+            ], 422);
+        }
+
+        session([
+            'applied_coupon' => [
+                'code' => $result['coupon']->code,
+                'discount' => $result['discount'],
+            ],
+        ]);
+
+        return response()->json([
+            'code' => $result['coupon']->code,
+            'discount' => $result['discount'],
+            'message' => 'Coupon applied successfully.',
+        ]);
+    }
+
+    /**
+     * Remove the currently applied coupon from the session.
+     */
+    public function remove(): JsonResponse
+    {
+        session()->forget('applied_coupon');
+
+        return response()->json([
+            'message' => 'Coupon removed.',
+        ]);
+    }
+}
+
+
+
+
+
+
+13. Edit app/Http/Controller/Storefront/CheckoutController.php:
+---------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Storefront\StoreCheckoutRequest;
+use App\Services\CartService;
+use App\Services\CouponService;
+use App\Services\OrderService;
+use App\Services\SslcommerzPaymentService;
+use Illuminate\Http\RedirectResponse;
+use Inertia\Inertia;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+
+class CheckoutController extends Controller
+{
+    public function __construct(
+        private readonly CartService $cartService,
+        private readonly OrderService $orderService,
+        private readonly SslcommerzPaymentService $paymentService,
+        private readonly CouponService $couponService,
+    ) {}
+
+    /**
+     * Display the checkout page.
+     */
+    public function index(): Response|RedirectResponse
+    {
+        if ($this->cartService->totalQty() === 0) {
+            return redirect()
+                ->route('shop.cart')
+                ->with('error', 'Your cart is empty. Add items before checkout.');
+        }
+
+        $delivery = config('shop.delivery');
+
+        return Inertia::render('shop/Checkout', [
+            'districts' => config('shop.districts'),
+            'deliveryCharges' => [
+                'insideDhaka' => (float) $delivery['inside_dhaka'],
+                'outsideDhaka' => (float) $delivery['outside_dhaka'],
+                'dhakaDistrict' => $delivery['dhaka_district'],
+            ],
+            'appliedCoupon' => session('applied_coupon'),
+        ]);
+    }
+
+    /**
+     * Place an order and complete checkout.
+     */
+    public function store(StoreCheckoutRequest $request): RedirectResponse|SymfonyResponse
+    {
+        $validated = $request->validated();
+
+        // Re-validate the coupon server-side at the moment of order placement.
+        // Never trust the discount amount computed on the client.
+        $couponData = null;
+
+        if (!empty($validated['coupon_code'])) {
+            $result = $this->couponService->validate(
+                $validated['coupon_code'],
+                $this->cartService->subtotal(),
+                $validated['email'] ?? null,
+                $validated['phone'] ?? null,
+            );
+
+            if (!$result['valid']) {
+                session()->forget('applied_coupon');
+
+                return back()
+                    ->withErrors(['coupon_code' => $result['message']])
+                    ->withInput($request->except('coupon_code'));
+            }
+
+            $couponData = [
+                'coupon_id' => $result['coupon']->id,
+                'coupon_code' => $result['coupon']->code,
+                'discount_amount' => $result['discount'],
+            ];
+        }
+
+        $orderPayload = array_merge($validated, $couponData ?? []);
+
+        if ($validated['payment_method'] === 'sslcommerz') {
+            $order = $this->orderService->placeSslcommerzOrder($orderPayload);
+            $result = $this->paymentService->initiate($order);
+
+            if ($result['gateway_url'] === null) {
+                return redirect()
+                    ->route('shop.payments.failed', ['order' => $order->order_number])
+                    ->with('error', 'Unable to start online payment. Please try again.');
+            }
+
+            if ($couponData) {
+                $order->coupon->recordUsage();
+                session()->forget('applied_coupon');
+            }
+
+            return Inertia::location($result['gateway_url']);
+        }
+
+        $order = $this->orderService->placeCodOrder($orderPayload);
+
+        if ($couponData) {
+            $order->coupon->recordUsage();
+            session()->forget('applied_coupon');
+        }
+
+        return redirect()
+            ->route('shop.orders.success')
+            ->with('order', [
+                'orderNumber' => $order->order_number,
+                'total' => (float) $order->total,
+                'discount' => (float) $order->discount_amount,
+                'paymentLabel' => 'Cash on Delivery',
+            ]);
+    }
+}
+
+
+
+14. Edit StoreCheckoutRequest.php Request:
+------------------------------------------
+Edit app/Http/Request/Storefront/StoreCheckoutRequest.php:
+----------------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Storefront;
+
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class StoreCheckoutRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'customer_name' => ['required', 'string', 'max:150'],
+            'phone' => ['required', 'string', 'regex:/^01\d{9}$/'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'district' => ['required', 'string', Rule::in(config('shop.districts'))],
+            'area' => ['required', 'string', 'max:150'],
+            'address' => ['required', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'payment_method' => ['required', Rule::in(['cod', 'sslcommerz'])],
+            'coupon_code' => ['nullable', 'string', 'max:100'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'phone.regex' => 'Enter a valid 11-digit Bangladesh phone number (01XXXXXXXXX).',
+        ];
+    }
+
+    /**
+     * Normalise the phone number before validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('phone')) {
+            $this->merge([
+                'phone' => preg_replace('/[\s-]+/', '', (string) $this->input('phone')),
+            ]);
+        }
+    }
+}
+
+
+
+
+
+
+
+15. Edit Service CartService.php, CouponService.php, OrderService.php:
+-----------------------------------------------------------------------
+15.1 Edit app/Services/CartService.php:
+----------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Cart;
+use App\Models\CartItem;
+use Illuminate\Support\Facades\Auth;
+
+class CartService
+{
+    private const CART_SESSION_KEY = 'cart_id';
+
+    /**
+     * In-request cache of the resolved Cart row.
+     * null  = not looked up yet
+     * false = looked up and does not exist
+     */
+    private Cart|false|null $resolvedCart = null;
+
+    // ─── Cart resolution ──────────────────────────────────────────────────────
+
+    /**
+     * Find the cart for the current visitor without creating one.
+     *
+     * - Authenticated users → matched by user_id
+     * - Guests             → cart primary key is stored in the session
+     */
+    private function findCart(): ?Cart
+    {
+        if ($this->resolvedCart !== null) {
+            return $this->resolvedCart === false ? null : $this->resolvedCart;
+        }
+
+        if (Auth::id()) {
+            $cart = Cart::where('user_id', Auth::id())->first();
+        } else {
+            $cartId = session(self::CART_SESSION_KEY);
+            $cart = $cartId ? Cart::find((int) $cartId) : null;
+        }
+
+        $this->resolvedCart = $cart ?? false;
+
+        return $cart;
+    }
+
+    /**
+     * Find or create the cart for the current visitor.
+     * For guests, the new cart's primary key is persisted in the session.
+     */
+    private function resolveCart(): Cart
+    {
+        $existing = $this->findCart();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        if (Auth::id()) {
+            $cart = Cart::create(['user_id' => Auth::id()]);
+        } else {
+            $cart = Cart::create(['session_id' => session()->getId()]);
+            session([self::CART_SESSION_KEY => $cart->id]);
+        }
+
+        $this->resolvedCart = $cart;
+
+        return $cart;
+    }
+
+    // ─── Public API ───────────────────────────────────────────────────────────
+
+    /**
+     * Total item count — cheap: one SUM query on cart_items.
+     */
+    public function totalQty(): int
+    {
+        $cart = $this->findCart();
+
+        if (! $cart) {
+            return 0;
+        }
+
+        return (int) $cart->items()->sum('quantity');
+    }
+
+    /**
+     * Cart subtotal (sum of quantity * active product price).
+     * Only counts items whose product is currently active.
+     */
+    public function subtotal(): float
+    {
+        $cart = $this->findCart();
+
+        if (! $cart) {
+            return 0.0;
+        }
+
+        return (float) $cart->items()
+            ->whereHas('product', fn($q) => $q->where('is_active', true))
+            ->with('product:id,price')
+            ->get()
+            ->sum(fn(CartItem $item) => $item->quantity * (float) $item->product->price);
+    }
+
+    /**
+     * Full cart items resolved with product details.
+     *
+     * @return list<array{productId: int, name: string, slug: string, price: float, img: string, qty: int, inStock: bool}>
+     */
+    public function items(): array
+    {
+        $cart = $this->findCart();
+
+        if (! $cart) {
+            return [];
+        }
+
+        return $cart->items()
+            ->with([
+                'product',
+                'product.images' => fn($q) => $q->where('is_primary', true),
+            ])
+            ->get()
+            ->filter(fn(CartItem $item) => $item->product?->is_active)
+            ->map(fn(CartItem $item): array => [
+                'productId' => $item->product_id,
+                'name' => $item->product->name,
+                'slug' => $item->product->slug,
+                'price' => (float) $item->product->price,
+                'img' => $item->product->images->first()?->image_path ?? '',
+                'qty' => $item->quantity,
+                'inStock' => $item->product->stock_status === 'in_stock',
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Add a product or increment its quantity.
+     */
+
+    public function add(int $productId, int $qty = 1): void
+    {
+        $cart = $this->resolveCart();
+        $qty = max(1, $qty);
+
+        /** @var \App\Models\CartItem|null $existing */
+        $existing = $cart->items()->where('product_id', $productId)->first();
+
+        if ($existing) {
+            $existing->increment('quantity', $qty);
+        } else {
+            $cart->items()->create([
+                'product_id' => $productId,
+                'quantity' => $qty,
+            ]);
+        }
+    }
+
+    /**
+     * Set the exact quantity of a cart item (minimum 1).
+     */
+    public function update(int $productId, int $qty): void
+    {
+        $cart = $this->findCart();
+
+        if (! $cart) {
+            return;
+        }
+
+        $cart->items()
+            ->where('product_id', $productId)
+            ->update(['quantity' => max(1, $qty)]);
+    }
+
+    /**
+     * Remove a product from the cart.
+     */
+    public function remove(int $productId): void
+    {
+        $cart = $this->findCart();
+
+        if (! $cart) {
+            return;
+        }
+
+        $cart->items()->where('product_id', $productId)->delete();
+    }
+
+    /**
+     * Remove all items from the cart (keeps the cart row itself).
+     */
+    public function clear(): void
+    {
+        $cart = $this->findCart();
+
+        if (! $cart) {
+            return;
+        }
+
+        $cart->items()->delete();
+    }
+}
+
+
+
+15.2 Edit app/Services/CouponService.php:
+----------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Coupon;
+use App\Models\Order;
+
+class CouponService
+{
+    /**
+     * Validate a coupon code against the cart subtotal and customer identity.
+     *
+     * @return array{valid: bool, message?: string, coupon?: Coupon, discount?: float}
+     */
+    public function validate(
+        string $code,
+        float $subtotal,
+        ?string $email = null,
+        ?string $phone = null,
+    ): array {
+        $coupon = Coupon::whereRaw('UPPER(code) = ?', [strtoupper(trim($code))])->first();
+
+        if (!$coupon) {
+            return $this->fail('Invalid coupon code.');
+        }
+
+        if (!$coupon->isUsable()) {
+            return $this->fail('This coupon is no longer valid.');
+        }
+
+        if ($subtotal < (float) $coupon->minimum_amount) {
+            return $this->fail(
+                'Minimum order amount for this coupon is ৳' . number_format((float) $coupon->minimum_amount, 2) . '.'
+            );
+        }
+
+        if (($email || $phone) && $this->exceedsPerUserLimit($coupon, $email, $phone)) {
+            return $this->fail('You have already used this coupon the maximum number of times.');
+        }
+
+        return [
+            'valid' => true,
+            'coupon' => $coupon,
+            'discount' => $this->calculateDiscount($coupon, $subtotal),
+        ];
+    }
+
+    public function calculateDiscount(Coupon $coupon, float $subtotal): float
+    {
+        if ($coupon->type === 'fixed') {
+            return round(min((float) $coupon->value, $subtotal), 2);
+        }
+
+        $discount = $subtotal * ((float) $coupon->value / 100);
+
+        if ($coupon->maximum_discount) {
+            $discount = min($discount, (float) $coupon->maximum_discount);
+        }
+
+        return round($discount, 2);
+    }
+
+    private function exceedsPerUserLimit(Coupon $coupon, ?string $email, ?string $phone): bool
+    {
+        if (!$coupon->usage_per_user) {
+            return false;
+        }
+
+        $usedByCustomer = Order::where('coupon_id', $coupon->id)
+            ->where(function ($query) use ($email, $phone) {
+                if ($email) {
+                    $query->orWhere('email', $email);
+                }
+
+                if ($phone) {
+                    $query->orWhere('phone', $phone);
+                }
+            })
+            ->count();
+
+        return $usedByCustomer >= $coupon->usage_per_user;
+    }
+
+    private function fail(string $message): array
+    {
+        return [
+            'valid' => false,
+            'message' => $message,
+        ];
+    }
+}
+
+
+
+
+15.3 Edit app/Services/OrderService.php:
+----------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Order;
+use App\Models\OrderStatusHistory;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+
+class OrderService
+{
+    public function __construct(private readonly CartService $cartService) {}
+
+    /**
+     * Calculate the delivery charge for a given district.
+     */
+    public function deliveryChargeForDistrict(string $district): float
+    {
+        $delivery = config('shop.delivery');
+
+        return $district === $delivery['dhaka_district']
+            ? (float) $delivery['inside_dhaka']
+            : (float) $delivery['outside_dhaka'];
+    }
+
+    /**
+     * Place a Cash on Delivery order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeCodOrder(array $shipping): Order
+    {
+        return $this->placeOrder($shipping, 'cod', 'Order placed via Cash on Delivery.');
+    }
+
+    /**
+     * Place an SSLCommerz order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeSslcommerzOrder(array $shipping): Order
+    {
+        return $this->placeOrder($shipping, 'sslcommerz', 'Order placed via SSLCommerz. Awaiting online payment.');
+    }
+
+    /**
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    private function placeOrder(array $shipping, string $paymentMethod, string $statusNote): Order
+    {
+        $items = $this->cartService->items();
+
+        if ($items === []) {
+            throw ValidationException::withMessages([
+                'cart' => 'Your cart is empty.',
+            ]);
+        }
+
+        $outOfStock = collect($items)->first(fn(array $item): bool => ! $item['inStock']);
+
+        if ($outOfStock !== null) {
+            throw ValidationException::withMessages([
+                'cart' => "{$outOfStock['name']} is no longer available.",
+            ]);
+        }
+
+        $subtotal = collect($items)->sum(
+            fn(array $item): float => $item['price'] * $item['qty'],
+        );
+
+        $deliveryCharge = $this->deliveryChargeForDistrict($shipping['district']);
+        $total = $subtotal + $deliveryCharge;
+
+        return DB::transaction(function () use ($shipping, $items, $subtotal, $deliveryCharge, $total, $paymentMethod, $statusNote): Order {
+            $order = Order::create([
+                'order_number' => $this->generateOrderNumber(),
+                'user_id' => Auth::id(),
+                'customer_name' => $shipping['customer_name'],
+                'phone' => $shipping['phone'],
+                'email' => $shipping['email'],
+                'district' => $shipping['district'],
+                'area' => $shipping['area'],
+                'address' => $shipping['address'],
+                'notes' => $shipping['notes'] ?? null,
+                'subtotal' => $subtotal,
+                'delivery_charge' => $deliveryCharge,
+                'total' => $total,
+                'payment_method' => $paymentMethod,
+                'payment_status' => 'pending',
+                'status' => 'pending',
+                'placed_at' => now(),
+                'coupon_id' => $shipping['coupon_id'] ?? null,
+                'coupon_code' => $shipping['coupon_code'] ?? null,
+                'discount_amount' => $shipping['discount_amount'] ?? 0,
+            ]);
+
+            foreach ($items as $item) {
+                $lineTotal = $item['price'] * $item['qty'];
+
+                $order->items()->create([
+                    'product_id' => $item['productId'],
+                    'product_name' => $item['name'],
+                    'unit_price' => $item['price'],
+                    'quantity' => $item['qty'],
+                    'line_total' => $lineTotal,
+                ]);
+            }
+
+            OrderStatusHistory::create([
+                'order_id' => $order->id,
+                'status' => 'pending',
+                'note' => $statusNote,
+                'changed_by' => Auth::id(),
+            ]);
+
+            $this->cartService->clear();
+
+            return $order;
+        });
+    }
+
+    /**
+     * Update order status and payment status from the admin panel.
+     *
+     * @param  array{
+     *     status: string,
+     *     payment_status: string,
+     *     note?: string|null,
+     * }  $data
+     */
+    public function updateFromAdmin(Order $order, array $data, ?int $changedBy = null): Order
+    {
+        $statusChanged = $order->status !== $data['status'];
+        $paymentStatusChanged = $order->payment_status !== $data['payment_status'];
+        $note = filled($data['note'] ?? null) ? (string) $data['note'] : null;
+
+        if (! $statusChanged && ! $paymentStatusChanged && $note === null) {
+            return $order;
+        }
+
+        return DB::transaction(function () use ($order, $data, $changedBy, $statusChanged, $paymentStatusChanged, $note): Order {
+            $order->update([
+                'status' => $data['status'],
+                'payment_status' => $data['payment_status'],
+            ]);
+
+            if ($statusChanged || $paymentStatusChanged || $note !== null) {
+                OrderStatusHistory::create([
+                    'order_id' => $order->id,
+                    'status' => $data['status'],
+                    'note' => $note ?? $this->adminStatusChangeNote($statusChanged, $paymentStatusChanged, $data),
+                    'changed_by' => $changedBy,
+                    'created_at' => now(),
+                ]);
+            }
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * @param  array{status: string, payment_status: string}  $data
+     */
+    private function adminStatusChangeNote(bool $statusChanged, bool $paymentStatusChanged, array $data): string
+    {
+        if ($statusChanged && $paymentStatusChanged) {
+            return "Order status changed to {$data['status']} and payment status changed to {$data['payment_status']}.";
+        }
+
+        if ($statusChanged) {
+            return "Order status changed to {$data['status']}.";
+        }
+
+        return "Payment status changed to {$data['payment_status']}.";
+    }
+
+    /**
+     * Generate a unique human-facing order number, e.g. SE-2026-000123.
+     */
+    private function generateOrderNumber(): string
+    {
+        $year = now()->format('Y');
+        $prefix = "SE-{$year}-";
+
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $suffix = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            $orderNumber = $prefix . $suffix;
+
+            if (! Order::where('order_number', $orderNumber)->exists()) {
+                return $orderNumber;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate a unique order number.');
+    }
+}
+
+
+
+
+
+16. Edit Checkout.vue Page:
+---------------------------
+Edit resources/js/pages/shop/Checkout.vue:
+------------------------------------------
+<script setup lang="ts">
+import { Head, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import ShopCheckoutSummary from '@/components/shop/ShopCheckoutSummary.vue';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import { useShopCart } from '@/composables/shop/useShopCart';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import type { ShopCheckoutConfig } from '@/types/shop';
+import shop from '@/routes/shop';
+
+type PaymentMethod = 'cod' | 'sslcommerz';
+
+type AppliedCoupon = {
+    code: string;
+    discount: number;
+};
+
+const { districts, deliveryCharges, appliedCoupon } = defineProps<{
+    districts: string[];
+    deliveryCharges: ShopCheckoutConfig;
+    appliedCoupon?: AppliedCoupon | null;
+}>();
+
+const { cart, cartSubtotal, updateQty, removeItem } = useShopCart();
+const { showToast } = useShopUi();
+
+const form = useForm({
+    customer_name: '',
+    phone: '',
+    email: '',
+    district: '',
+    area: '',
+    address: '',
+    notes: '',
+    payment_method: 'cod' as PaymentMethod,
+    coupon_code: appliedCoupon?.code ?? '',
+});
+
+// --- Coupon state ---
+const couponInput = ref('');
+const coupon = ref<AppliedCoupon | null>(appliedCoupon ?? null);
+const couponError = ref('');
+const couponApplying = ref(false);
+
+const deliveryCharge = computed(() => {
+    if (cart.value.length === 0) {
+        return 0;
+    }
+
+    if (!form.district) {
+        return deliveryCharges.outsideDhaka;
+    }
+
+    return form.district === deliveryCharges.dhakaDistrict
+        ? deliveryCharges.insideDhaka
+        : deliveryCharges.outsideDhaka;
+});
+
+const deliveryNote = computed(() => {
+    if (cart.value.length === 0 || !form.district) {
+        return '';
+    }
+
+    return form.district === deliveryCharges.dhakaDistrict
+        ? '(Inside Dhaka)'
+        : '(Outside Dhaka)';
+});
+
+const couponDiscount = computed(() => coupon.value?.discount ?? 0);
+
+const grandTotal = computed(() =>
+    Math.max(
+        cartSubtotal.value + deliveryCharge.value - couponDiscount.value,
+        0,
+    ),
+);
+
+const submitLabel = computed(() =>
+    form.payment_method === 'sslcommerz' ? 'Proceed to Payment' : 'Place Order',
+);
+
+function handleIncrement(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    if (item) {
+        updateQty(productId, item.qty + 1);
+    }
+}
+
+function handleDecrement(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    if (item && item.qty > 1) {
+        updateQty(productId, item.qty - 1);
+    }
+}
+
+function handleRemove(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    removeItem(productId);
+    if (item) {
+        showToast(`Removed: ${item.name}`);
+    }
+}
+
+async function applyCoupon(): Promise<void> {
+    const code = couponInput.value.trim();
+
+    if (!code) {
+        couponError.value = 'Please enter a coupon code.';
+        return;
+    }
+
+    couponApplying.value = true;
+    couponError.value = '';
+
+    try {
+        const response = await fetch(shop.checkout.coupon.apply.url(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN':
+                    document
+                        .querySelector('meta[name="csrf-token"]')
+                        ?.getAttribute('content') ?? '',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                code,
+                email: form.email || null,
+                phone: form.phone || null,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            couponError.value = data.message ?? 'Unable to apply this coupon.';
+            return;
+        }
+
+        coupon.value = {
+            code: data.code,
+            discount: data.discount,
+        };
+        form.coupon_code = data.code;
+        couponInput.value = '';
+        showToast(data.message ?? 'Coupon applied.');
+    } catch {
+        couponError.value = 'Something went wrong. Please try again.';
+    } finally {
+        couponApplying.value = false;
+    }
+}
+
+async function removeCoupon(): Promise<void> {
+    try {
+        await fetch(shop.checkout.coupon.remove.url(), {
+            method: 'DELETE',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN':
+                    document
+                        .querySelector('meta[name="csrf-token"]')
+                        ?.getAttribute('content') ?? '',
+            },
+            credentials: 'same-origin',
+        });
+    } finally {
+        coupon.value = null;
+        form.coupon_code = '';
+        couponError.value = '';
+        showToast('Coupon removed.');
+    }
+}
+
+function handleSubmit(): void {
+    if (cart.value.length === 0) {
+        showToast('Your cart is empty');
+        return;
+    }
+
+    form.post(shop.checkout.store.url(), {
+        preserveScroll: true,
+        onError: (errors) => {
+            if (errors.coupon_code) {
+                couponError.value = errors.coupon_code;
+                coupon.value = null;
+            }
+            showToast('Please complete the highlighted fields');
+        },
+    });
+}
+</script>
+
+<template>
+    <Head title="Checkout">
+        <meta
+            name="description"
+            content="Secure checkout with Cash on Delivery or SSLCommerz online payment. Delivery across Bangladesh."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            rel="preconnect"
+            href="https://fonts.gstatic.com"
+            crossorigin="anonymous"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+    </Head>
+
+    <div class="bg-gray-50 py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb
+                :items="[
+                    { label: 'Cart', href: shop.cart.url() },
+                    { label: 'Checkout' },
+                ]"
+            />
+
+            <form
+                novalidate
+                class="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8"
+                @submit.prevent="handleSubmit"
+            >
+                <div class="space-y-6 lg:col-span-2">
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Shipping Details
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Where should we deliver your order?
+                        </p>
+
+                        <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label
+                                    for="customer_name"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Full name
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="customer_name"
+                                    v-model="form.customer_name"
+                                    name="customer_name"
+                                    type="text"
+                                    required
+                                    autocomplete="name"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.customer_name
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="e.g. Rina Akter"
+                                />
+                                <p
+                                    v-show="form.errors.customer_name"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.customer_name }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="phone"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Phone
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="phone"
+                                    v-model="form.phone"
+                                    name="phone"
+                                    type="tel"
+                                    required
+                                    autocomplete="tel"
+                                    inputmode="numeric"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.phone
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="01XXXXXXXXX"
+                                />
+                                <p
+                                    v-show="form.errors.phone"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.phone }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="email"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Email
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="email"
+                                    v-model="form.email"
+                                    name="email"
+                                    type="email"
+                                    required
+                                    autocomplete="email"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.email
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="you@example.com"
+                                />
+                                <p
+                                    v-show="form.errors.email"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.email }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="district"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    District
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <select
+                                    id="district"
+                                    v-model="form.district"
+                                    name="district"
+                                    required
+                                    class="w-full rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.district
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                >
+                                    <option value="">Select district</option>
+                                    <option
+                                        v-for="district in districts"
+                                        :key="district"
+                                        :value="district"
+                                    >
+                                        {{ district }}
+                                    </option>
+                                </select>
+                                <p
+                                    v-show="form.errors.district"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.district }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="area"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Area / Thana
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="area"
+                                    v-model="form.area"
+                                    name="area"
+                                    type="text"
+                                    required
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.area
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="e.g. Dhanmondi"
+                                />
+                                <p
+                                    v-show="form.errors.area"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.area }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="address"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Full address
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <textarea
+                                    id="address"
+                                    v-model="form.address"
+                                    name="address"
+                                    rows="2"
+                                    required
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.address
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="House, road, and any landmark"
+                                />
+                                <p
+                                    v-show="form.errors.address"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.address }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="notes"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Order notes
+                                    <span class="text-gray-400"
+                                        >(optional)</span
+                                    >
+                                </label>
+                                <textarea
+                                    id="notes"
+                                    v-model="form.notes"
+                                    name="notes"
+                                    rows="2"
+                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    placeholder="Delivery instructions, preferred time, etc."
+                                />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Coupon Code
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Have a discount code? Apply it below.
+                        </p>
+
+                        <div
+                            v-if="!coupon"
+                            class="mt-4 flex flex-col gap-2 sm:flex-row"
+                        >
+                            <input
+                                v-model="couponInput"
+                                type="text"
+                                class="w-full flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 uppercase focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                placeholder="e.g. SUMMER20"
+                                :disabled="couponApplying"
+                                @keydown.enter.prevent="applyCoupon"
+                            />
+                            <button
+                                type="button"
+                                class="shrink-0 rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="couponApplying"
+                                @click="applyCoupon"
+                            >
+                                {{ couponApplying ? 'Applying...' : 'Apply' }}
+                            </button>
+                        </div>
+
+                        <div
+                            v-else
+                            class="mt-4 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3"
+                        >
+                            <div>
+                                <p class="text-sm font-semibold text-green-800">
+                                    {{ coupon.code }} applied
+                                </p>
+                                <p class="text-sm text-green-700">
+                                    You saved ৳{{ coupon.discount.toFixed(2) }}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="text-sm font-medium text-red-600 hover:underline"
+                                @click="removeCoupon"
+                            >
+                                Remove
+                            </button>
+                        </div>
+
+                        <p
+                            v-show="couponError"
+                            class="mt-2 text-sm text-red-600"
+                        >
+                            {{ couponError }}
+                        </p>
+                    </section>
+
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Payment Method
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Choose how you would like to pay for your order.
+                        </p>
+
+                        <div class="mt-5 space-y-3">
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'cod'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="cod"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-shop-primary-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h2m2-6h10a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2v-6a2 2 0 012-2zm7 5a2 2 0 11-4 0 2 2 0 014 0z"
+                                    />
+                                </svg>
+                                <div>
+                                    <p
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Cash on Delivery
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay the delivery agent in cash when you
+                                        receive your order.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'sslcommerz'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="sslcommerz"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-shop-primary-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                    />
+                                </svg>
+                                <div>
+                                    <p
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Pay Online (SSLCommerz)
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay securely with bKash, Nagad, cards,
+                                        or mobile banking via SSLCommerz.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <p
+                            v-show="form.errors.payment_method"
+                            class="mt-3 text-sm text-red-600"
+                        >
+                            {{ form.errors.payment_method }}
+                        </p>
+                    </section>
+                </div>
+
+                <div class="lg:col-span-1">
+                    <div class="lg:sticky lg:top-24">
+                        <ShopCheckoutSummary
+                            :items="cart"
+                            :subtotal="cartSubtotal"
+                            :delivery-charge="deliveryCharge"
+                            :delivery-note="deliveryNote"
+                            :discount="couponDiscount"
+                            :coupon-code="coupon?.code ?? null"
+                            :grand-total="grandTotal"
+                            :is-empty="cart.length === 0"
+                            :processing="form.processing"
+                            :submit-label="submitLabel"
+                            @increment="handleIncrement"
+                            @decrement="handleDecrement"
+                            @remove="handleRemove"
+                        />
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
+17. Edit routes/web.php:
+--------------------------
+<?php
+
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Storefront\CartController;
+use App\Http\Controllers\Storefront\CheckoutController;
+use App\Http\Controllers\Storefront\HomeController;
+use App\Http\Controllers\Storefront\OrderSuccessController;
+use App\Http\Controllers\Storefront\CouponController;
+use App\Http\Controllers\Storefront\PaymentResultController;
+use App\Http\Controllers\Storefront\ProductController;
+use App\Http\Controllers\Storefront\ShopController;
+use App\Http\Controllers\Storefront\SslcommerzCallbackController;
+use App\Http\Controllers\Storefront\WishlistController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', HomeController::class)->name('home');
+Route::get('/shop', ShopController::class)->name('shop.index');
+Route::get('/products/{slug}', [ProductController::class, 'show'])->name('shop.products.show');
+
+// Cart
+Route::get('/cart', [CartController::class, 'index'])->name('shop.cart');
+Route::post('/cart', [CartController::class, 'store'])->name('shop.cart.store');
+Route::patch('/cart/{productId}', [CartController::class, 'update'])->name('shop.cart.update');
+Route::delete('/cart', [CartController::class, 'clear'])->name('shop.cart.clear');
+Route::delete('/cart/{productId}', [CartController::class, 'destroy'])->name('shop.cart.destroy');
+
+Route::get('/wishlist', [WishlistController::class, 'index'])->name('shop.wishlist');
+Route::middleware('auth')->group(function () {
+    Route::post('/wishlist', [WishlistController::class, 'store'])->name('shop.wishlist.store');
+    Route::delete('/wishlist', [WishlistController::class, 'clear'])->name('shop.wishlist.clear');
+    Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy'])->name('shop.wishlist.destroy');
+});
+Route::get('/checkout', [CheckoutController::class, 'index'])->name('shop.checkout');
+Route::post('/checkout', [CheckoutController::class, 'store'])->name('shop.checkout.store');
+Route::get('/orders/success', OrderSuccessController::class)->name('shop.orders.success');
+
+Route::post('checkout/coupon', [CouponController::class, 'apply'])
+    ->name('shop.checkout.coupon.apply');
+Route::delete('checkout/coupon', [CouponController::class, 'remove'])
+    ->name('shop.checkout.coupon.remove');
+
+Route::get('/orders/payment/success', [PaymentResultController::class, 'success'])->name('shop.payments.success');
+Route::get('/orders/payment/failed', [PaymentResultController::class, 'failed'])->name('shop.payments.failed');
+Route::get('/orders/payment/cancelled', [PaymentResultController::class, 'cancelled'])->name('shop.payments.cancelled');
+
+Route::post('/payments/sslcommerz/success', [SslcommerzCallbackController::class, 'success'])->name('shop.payments.sslcommerz.success');
+Route::post('/payments/sslcommerz/failure', [SslcommerzCallbackController::class, 'failure'])->name('shop.payments.sslcommerz.failure');
+Route::post('/payments/sslcommerz/cancel', [SslcommerzCallbackController::class, 'cancel'])->name('shop.payments.sslcommerz.cancel');
+
+Route::middleware(['auth', 'verified', 'admin'])->group(function () {
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+});
+
+require __DIR__ . '/settings.php';
+

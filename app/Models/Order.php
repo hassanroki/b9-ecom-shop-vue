@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Coupon;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,6 +11,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
+    'coupon_id',
+    'coupon_code',
+    'discount_amount',
     'order_number',
     'user_id',
     'customer_name',
@@ -67,6 +71,11 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
     }
 
     public function statusHistories(): HasMany

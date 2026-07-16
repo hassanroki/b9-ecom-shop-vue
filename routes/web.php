@@ -5,6 +5,7 @@ use App\Http\Controllers\Storefront\CartController;
 use App\Http\Controllers\Storefront\CheckoutController;
 use App\Http\Controllers\Storefront\HomeController;
 use App\Http\Controllers\Storefront\OrderSuccessController;
+use App\Http\Controllers\Storefront\CouponController;
 use App\Http\Controllers\Storefront\PaymentResultController;
 use App\Http\Controllers\Storefront\ProductController;
 use App\Http\Controllers\Storefront\ShopController;
@@ -32,6 +33,11 @@ Route::middleware('auth')->group(function () {
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('shop.checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('shop.checkout.store');
 Route::get('/orders/success', OrderSuccessController::class)->name('shop.orders.success');
+
+Route::post('checkout/coupon', [CouponController::class, 'apply'])
+    ->name('shop.checkout.coupon.apply');
+Route::delete('checkout/coupon', [CouponController::class, 'remove'])
+    ->name('shop.checkout.coupon.remove');
 
 Route::get('/orders/payment/success', [PaymentResultController::class, 'success'])->name('shop.payments.success');
 Route::get('/orders/payment/failed', [PaymentResultController::class, 'failed'])->name('shop.payments.failed');

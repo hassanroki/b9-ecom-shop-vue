@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Storefront;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Storefront\StoreCheckoutRequest;
 use App\Services\CartService;
+use App\Services\CouponService;
 use App\Services\OrderService;
 use App\Services\SslcommerzPaymentService;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +19,7 @@ class CheckoutController extends Controller
         private readonly CartService $cartService,
         private readonly OrderService $orderService,
         private readonly SslcommerzPaymentService $paymentService,
+        private readonly CouponService $couponService,
     ) {}
 
     /**
@@ -40,6 +42,7 @@ class CheckoutController extends Controller
                 'outsideDhaka' => (float) $delivery['outside_dhaka'],
                 'dhakaDistrict' => $delivery['dhaka_district'],
             ],
+            'appliedCoupon' => session('applied_coupon'),
         ]);
     }
 
@@ -50,8 +53,37 @@ class CheckoutController extends Controller
     {
         $validated = $request->validated();
 
+        // Re-validate the coupon server-side at the moment of order placement.
+        // Never trust the discount amount computed on the client.
+        $couponData = null;
+
+        if (!empty($validated['coupon_code'])) {
+            $result = $this->couponService->validate(
+                $validated['coupon_code'],
+                $this->cartService->subtotal(),
+                $validated['email'] ?? null,
+                $validated['phone'] ?? null,
+            );
+
+            if (!$result['valid']) {
+                session()->forget('applied_coupon');
+
+                return back()
+                    ->withErrors(['coupon_code' => $result['message']])
+                    ->withInput($request->except('coupon_code'));
+            }
+
+            $couponData = [
+                'coupon_id' => $result['coupon']->id,
+                'coupon_code' => $result['coupon']->code,
+                'discount_amount' => $result['discount'],
+            ];
+        }
+
+        $orderPayload = array_merge($validated, $couponData ?? []);
+
         if ($validated['payment_method'] === 'sslcommerz') {
-            $order = $this->orderService->placeSslcommerzOrder($validated);
+            $order = $this->orderService->placeSslcommerzOrder($orderPayload);
             $result = $this->paymentService->initiate($order);
 
             if ($result['gateway_url'] === null) {
@@ -60,16 +92,27 @@ class CheckoutController extends Controller
                     ->with('error', 'Unable to start online payment. Please try again.');
             }
 
+            if ($couponData) {
+                $order->coupon->recordUsage();
+                session()->forget('applied_coupon');
+            }
+
             return Inertia::location($result['gateway_url']);
         }
 
-        $order = $this->orderService->placeCodOrder($validated);
+        $order = $this->orderService->placeCodOrder($orderPayload);
+
+        if ($couponData) {
+            $order->coupon->recordUsage();
+            session()->forget('applied_coupon');
+        }
 
         return redirect()
             ->route('shop.orders.success')
             ->with('order', [
                 'orderNumber' => $order->order_number,
                 'total' => (float) $order->total,
+                'discount' => (float) $order->discount_amount,
                 'paymentLabel' => 'Cash on Delivery',
             ]);
     }

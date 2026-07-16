@@ -121,6 +121,9 @@ class OrderService
                 'payment_status' => 'pending',
                 'status' => 'pending',
                 'placed_at' => now(),
+                'coupon_id' => $shipping['coupon_id'] ?? null,
+                'coupon_code' => $shipping['coupon_code'] ?? null,
+                'discount_amount' => $shipping['discount_amount'] ?? 0,
             ]);
 
             foreach ($items as $item) {
