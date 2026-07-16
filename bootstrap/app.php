@@ -18,7 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function () {
             Route::middleware('web')
-                ->group(__DIR__ . '/../routes/admin.php');
+                ->group(base_path('routes/admin.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -27,6 +27,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        $middleware->validateCsrfTokens(except: [
+            'payments/sslcommerz/*',
+            'api/payments/sslcommerz/*',
+        ]);
 
         $middleware->web(append: [
             HandleAppearance::class,
