@@ -200,3 +200,62 @@ export type OrderUpdateFormData = {
     payment_status: PaymentStatus;
     note: string;
 };
+
+export type AdminDashboardOverview = {
+    total_revenue: number;
+    revenue_change_percent: number | null;
+    total_orders: number;
+    orders_change_percent: number | null;
+    average_order_value: number;
+    pending_orders: number;
+    total_customers: number;
+    new_customers_this_month: number;
+    total_products: number;
+    active_products: number;
+    out_of_stock_products: number;
+    total_wishlists: number;
+};
+
+export type AdminDashboardRevenuePoint = {
+    date: string;
+    label: string;
+    revenue: number;
+    orders: number;
+};
+
+export type AdminDashboardStatusBreakdown = {
+    status: string;
+    label: string;
+    count: number;
+};
+
+export type AdminDashboardPaymentMethodBreakdown = {
+    method: string;
+    label: string;
+    count: number;
+};
+
+export type AdminDashboardTopProduct = {
+    id: number;
+    name: string;
+    slug: string;
+    sold_count: number;
+    price: number;
+    category_name: string;
+};
+
+export type AdminDashboardTopCategory = {
+    id: number;
+    name: string;
+    products_count: number;
+};
+
+export type AdminDashboardRecentOrder = {
+    id: number;
+    order_number: string;
+    customer_name: string;
+    total: number;
+    status: OrderStatus;
+    payment_status: PaymentStatus;
+    placed_at: string | null;
+};
