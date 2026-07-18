@@ -10,6 +10,8 @@ use App\Http\Controllers\Storefront\PaymentResultController;
 use App\Http\Controllers\Storefront\ProductController;
 use App\Http\Controllers\Storefront\ShopController;
 use App\Http\Controllers\Storefront\SslcommerzCallbackController;
+use App\Http\Controllers\Storefront\StripeCallbackController;
+use App\Http\Controllers\Storefront\StripeWebhookController;
 use App\Http\Controllers\Storefront\WishlistController;
 use Illuminate\Support\Facades\Route;
 
@@ -46,6 +48,15 @@ Route::get('/orders/payment/cancelled', [PaymentResultController::class, 'cancel
 Route::post('/payments/sslcommerz/success', [SslcommerzCallbackController::class, 'success'])->name('shop.payments.sslcommerz.success');
 Route::post('/payments/sslcommerz/failure', [SslcommerzCallbackController::class, 'failure'])->name('shop.payments.sslcommerz.failure');
 Route::post('/payments/sslcommerz/cancel', [SslcommerzCallbackController::class, 'cancel'])->name('shop.payments.sslcommerz.cancel');
+
+// Stripe redirect callbacks (GET — from Stripe hosted checkout)
+Route::get('/payments/stripe/success', [StripeCallbackController::class, 'success'])->name('shop.payments.stripe.success');
+Route::get('/payments/stripe/cancel', [StripeCallbackController::class, 'cancel'])->name('shop.payments.stripe.cancel');
+
+// Stripe webhook — must be OUTSIDE CSRF middleware (raw POST from Stripe servers)
+Route::post('/payments/stripe/webhook', [StripeWebhookController::class, 'handle'])
+    ->name('shop.payments.stripe.webhook')
+    ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
 
 Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');

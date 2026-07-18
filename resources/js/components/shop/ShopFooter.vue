@@ -249,6 +249,11 @@ const year = computed(() => new Date().getFullYear());
                     >
                         SSLCommerz
                     </span>
+                    <span
+                        class="rounded border border-[#635BFF]/20 bg-[#635BFF]/5 px-2.5 py-1 text-[10px] font-bold tracking-wider text-[#635BFF] uppercase"
+                    >
+                        Stripe
+                    </span>
                 </div>
             </div>
         </div>

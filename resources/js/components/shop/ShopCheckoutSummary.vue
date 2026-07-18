@@ -13,6 +13,8 @@ const {
     isEmpty,
     processing = false,
     submitLabel = 'Place Order',
+    paymentMethod = 'cod',
+    stripeExchangeRate = 0.0084,
 } = defineProps<{
     items: ShopCartItem[];
     subtotal: number;
@@ -23,6 +25,8 @@ const {
     isEmpty: boolean;
     processing?: boolean;
     submitLabel?: string;
+    paymentMethod?: string;
+    stripeExchangeRate?: number;
 }>();
 
 const emit = defineEmits<{
@@ -228,6 +232,10 @@ function toggleSummary(): void {
                     <span class="font-bold text-shop-primary-600">{{
                         formatTaka(grandTotal)
                     }}</span>
+                </div>
+                <div v-if="paymentMethod === 'stripe'" class="flex justify-between text-xs text-[#635BFF] font-semibold mt-1">
+                    <span>USD Equivalent (Stripe)</span>
+                    <span>${{ (grandTotal * stripeExchangeRate).toFixed(2) }} USD</span>
                 </div>
             </div>
 

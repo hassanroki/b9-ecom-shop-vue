@@ -66,6 +66,26 @@ class OrderService
     }
 
     /**
+     * Place a Stripe order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeStripeOrder(array $shipping): Order
+    {
+        return $this->placeOrder($shipping, 'stripe', 'Order placed via Stripe. Awaiting online payment.');
+    }
+
+    /**
      * @param  array{
      *     customer_name: string,
      *     phone: string,

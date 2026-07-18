@@ -1,0 +1,2428 @@
+12. Laravel E-commerce Stripe Integration:
+==========================================
+Stripe ইন্টিগ্রেশন সম্পন্ন করার জন্য যে কাজগুলো করা হয়েছে এবং তার জন্য প্রযোজ্য কমান্ডগুলির তালিকা নিচে দেওয়া হলো:
+
+
+Step 1: Stripe SDK ইনস্টল করা:
+------------------------------
+ক. প্যাকেজ ইনস্টলেশন (ইতোমধ্যে সম্পন্ন করা হয়েছে):
+bash
+composer require stripe/stripe-php
+খ. ক্যাশ ক্লিয়ার ও রাউট চেকিং (ইতোমধ্যে রান করা হয়েছে):
+powershell
+# Laravel কনফিগারেশন এবং অ্যাপ্লিকেশন ক্যাশ ক্লিয়ার করার জন্য:
+php artisan config:clear; php artisan cache:clear; 
+# Stripe এর অন্তর্ভুক্ত রাউটগুলো পরীক্ষা করার জন্য:
+php artisan route:list --path=stripe
+গ. ডেটাবেজ আপডেট করার জন্য (রান করা প্রয়োজন):
+যেহেতু আপনি orders টেবিলের মাইগ্রেশনে payment_method হিসেবে 'stripe' যোগ করেছেন, মাইগ্রেশন ডেটাবেজে অ্যাপ্লাই করার জন্য নিচের কমান্ডটি রান করতে হবে:
+
+bash
+php artisan migrate
+ঘ. লোকাল টেস্টিং এর জন্য Webhook Command (আপনার সিস্টেমে চালাতে হবে):
+লোকাল মেশিনে Stripe এর Webhook টেস্ট করার জন্য প্রথমে Stripe CLI ব্যবহার করে লগইন করতে হবে এবং তারপর নিচের কমান্ডের মাধ্যমে Webhook লোকাল পোর্টে ফরওয়ার্ড করতে হবে:
+
+bash
+# Stripe Account এ লগইন করতে
+stripe login
+# লোকালহোস্টে Webhook ইভেন্ট ফরওয়ার্ড করার জন্য:
+stripe listen --forward-to localhost:8081/payments/stripe/webhook
+(এই কমান্ডটি রান করার পর যে whsec_... সিক্রেটটি টার্মিনালে দেখতে পাবেন, সেটি আপনার .env ফাইলের STRIPE_WEBHOOK_SECRET এর মধ্যে বসাতে হবে)
+
+
+
+
+
+Step 2: Edt .env:
+------------------
+STRIPE_KEY=pk_test_51TuRBuAXk7zfv0BDYkJ5n5y0gZaHwhMRRsDQkRrRsJ8YjIIckuWwgJVjo9wJopklDbtnw05cR4dX3pfeKTmbu9f9001EJro35c
+STRIPE_SECRET=sk_test_51TuRBuAXk7zfv0BDpKt9IyUe9VGWVtCHeaUNENI12oDYghOfzvXUaFOMUApFDEoGsYSDpeQr21P2jOAPl1UPtYWo00kptN4UlK
+STRIPE_WEBHOOK_SECRET=
+STRIPE_CURRENCY=USD
+
+
+
+
+
+Step 3: Stripe Configuration সেটআপ:
+--------------------------------------
+Edit config/stripe.php:
+---------------------------
+<?php
+
+return [
+    /*
+    |--------------------------------------------------------------------------
+    | Stripe Publishable Key
+    |--------------------------------------------------------------------------
+    | Used in the frontend to identify your Stripe account.
+    */
+    'key' => env('STRIPE_KEY', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Stripe Secret Key
+    |--------------------------------------------------------------------------
+    | Used server-side to authenticate Stripe API requests.
+    */
+    'secret' => env('STRIPE_SECRET', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Stripe Webhook Secret
+    |--------------------------------------------------------------------------
+    | Used to verify incoming webhook payloads from Stripe.
+    | Obtain this from: stripe listen --print-secret  (Stripe CLI)
+    */
+    'webhook_secret' => env('STRIPE_WEBHOOK_SECRET', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Currency
+    |--------------------------------------------------------------------------
+    | Stripe uses ISO 4217 currency codes. Use USD for test mode.
+    | Change to BDT only if your Stripe account supports it.
+    */
+    'currency' => env('STRIPE_CURRENCY', 'USD'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | BDT to USD Exchange Rate
+    |--------------------------------------------------------------------------
+    | The conversion rate used to convert BDT amounts to USD.
+    */
+    'exchange_rate' => env('STRIPE_EXCHANGE_RATE', 0.0084),
+];
+
+
+
+
+
+
+
+Step 4: Stripe Payment Service তৈরি:
+------------------------------------
+Edit app/Services/StripePaymentService.php:
+--------------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Order;
+use App\Models\Payment;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+use Stripe\Checkout\Session as StripeSession;
+use Stripe\Exception\SignatureVerificationException;
+use Stripe\Stripe;
+use Stripe\Webhook;
+
+class StripePaymentService
+{
+    public function __construct()
+    {
+        Stripe::setApiKey(config('stripe.secret'));
+    }
+
+    /**
+     * Initiate a Stripe Checkout Session for the given order.
+     *
+     * @return array{payment: Payment, checkout_url: string|null}
+     */
+    public function initiate(Order $order): array
+    {
+        if ($order->payment_status === 'paid') {
+            throw ValidationException::withMessages([
+                'order_id' => 'This order has already been paid.',
+            ]);
+        }
+
+        // Reuse an existing initiated payment if one exists
+        $existingPayment = $order->payments()
+            ->where('status', 'initiated')
+            ->where('gateway', 'stripe')
+            ->latest()
+            ->first();
+
+        if ($existingPayment !== null) {
+            $checkoutUrl = $existingPayment->raw_response['url'] ?? null;
+
+            if ($checkoutUrl !== null) {
+                return [
+                    'payment' => $existingPayment,
+                    'checkout_url' => $checkoutUrl,
+                ];
+            }
+        }
+
+        $transactionId = $this->generateTransactionId($order);
+
+        $order->loadMissing('items');
+
+        $productName = $order->items->first()?->product_name ?? "Order {$order->order_number}";
+        $currency = strtolower(config('stripe.currency', 'usd'));
+        $exchangeRate = (float) config('stripe.exchange_rate', 0.0084);
+        $usdAmount = round((float) $order->total * $exchangeRate, 2);
+
+        // Convert amount to the smallest currency unit (cents for USD)
+        $amountInCents = (int) round($usdAmount * 100);
+
+        // Build Stripe Checkout Session
+        $session = StripeSession::create([
+            'payment_method_types' => ['card'],
+            'line_items' => [
+                [
+                    'price_data' => [
+                        'currency' => $currency,
+                        'unit_amount' => $amountInCents,
+                        'product_data' => [
+                            'name' => $productName,
+                        ],
+                    ],
+                    'quantity' => 1,
+                ],
+            ],
+            'mode' => 'payment',
+            'client_reference_id' => $transactionId,
+            'success_url' => route('shop.payments.stripe.success') . '?session_id={CHECKOUT_SESSION_ID}',
+            'cancel_url' => route('shop.payments.stripe.cancel', ['order' => $order->order_number]),
+            'customer_email' => $order->email,
+            'metadata' => [
+                'order_number' => $order->order_number,
+                'transaction_id' => $transactionId,
+            ],
+        ]);
+
+        // Create Payment record
+        $payment = Payment::query()->create([
+            'order_id' => $order->id,
+            'gateway' => 'stripe',
+            'transaction_id' => $transactionId,
+            'amount' => $usdAmount,
+            'currency' => strtoupper($currency),
+            'status' => 'initiated',
+            'raw_response' => [
+                'session_id' => $session->id,
+                'url' => $session->url,
+            ],
+        ]);
+
+        return [
+            'payment' => $payment->fresh(),
+            'checkout_url' => $session->url,
+        ];
+    }
+
+    /**
+     * Handle a Stripe webhook event (server-to-server).
+     */
+    public function handleWebhook(Request $request): void
+    {
+        $webhookSecret = config('stripe.webhook_secret');
+        $payload = $request->getContent();
+        $sigHeader = $request->header('Stripe-Signature', '');
+
+        try {
+            $event = Webhook::constructEvent($payload, $sigHeader, $webhookSecret);
+        } catch (SignatureVerificationException $e) {
+            throw ValidationException::withMessages([
+                'signature' => 'Invalid Stripe webhook signature.',
+            ]);
+        }
+
+        match ($event->type) {
+            'checkout.session.completed' => $this->handleSessionCompleted($event->data->object),
+            'checkout.session.expired' => $this->handleSessionExpired($event->data->object),
+            'payment_intent.payment_failed' => null, // Handled via cancel_url redirect
+            default => null,
+        };
+    }
+
+    /**
+     * Verify and confirm a Stripe Checkout Session after redirect (success URL).
+     */
+    public function confirmSession(string $sessionId): Payment
+    {
+        $session = StripeSession::retrieve($sessionId);
+
+        $transactionId = $session->client_reference_id
+            ?? $session->metadata['transaction_id']
+            ?? null;
+
+        if (!$transactionId) {
+            throw ValidationException::withMessages([
+                'session_id' => 'Cannot identify payment from Stripe session.',
+            ]);
+        }
+
+        $payment = $this->findPaymentByTransactionId($transactionId);
+
+        if ($payment->status === 'success') {
+            return $payment->load(['order']);
+        }
+
+        if ($session->payment_status !== 'paid') {
+            throw ValidationException::withMessages([
+                'payment' => 'Stripe payment has not been completed yet.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($payment, $session): Payment {
+            $payment->update([
+                'status' => 'success',
+                'val_id' => $session->payment_intent,
+                'paid_at' => now(),
+                'raw_response' => array_merge($payment->raw_response ?? [], [
+                    'payment_intent' => $session->payment_intent,
+                    'payment_status' => $session->payment_status,
+                ]),
+            ]);
+
+            $payment->order?->update(['payment_status' => 'paid']);
+
+            return $payment->fresh(['order']);
+        });
+    }
+
+    /**
+     * Mark a payment as cancelled (called from cancel_url redirect).
+     */
+    public function cancelByOrderNumber(string $orderNumber): ?Payment
+    {
+        $payment = Payment::query()
+            ->whereHas('order', fn($q) => $q->where('order_number', $orderNumber))
+            ->where('gateway', 'stripe')
+            ->where('status', 'initiated')
+            ->latest()
+            ->first();
+
+        if ($payment === null) {
+            return null;
+        }
+
+        $payment->update(['status' => 'cancelled']);
+        $payment->order?->update(['payment_status' => 'cancelled']);
+
+        return $payment->fresh(['order']);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private function handleSessionCompleted(object $session): void
+    {
+        $transactionId = $session->client_reference_id
+            ?? $session->metadata['transaction_id']
+            ?? null;
+
+        if (!$transactionId) {
+            return;
+        }
+
+        try {
+            $payment = $this->findPaymentByTransactionId((string) $transactionId);
+
+            if ($payment->status === 'success') {
+                return;
+            }
+
+            DB::transaction(function () use ($payment, $session): void {
+                $payment->update([
+                    'status' => 'success',
+                    'val_id' => $session->payment_intent,
+                    'paid_at' => now(),
+                    'raw_response' => array_merge($payment->raw_response ?? [], [
+                        'payment_intent' => $session->payment_intent,
+                        'payment_status' => $session->payment_status,
+                    ]),
+                ]);
+
+                $payment->order?->update(['payment_status' => 'paid']);
+            });
+        } catch (ValidationException) {
+            // Payment record not found — ignore
+        }
+    }
+
+    private function handleSessionExpired(object $session): void
+    {
+        $transactionId = $session->client_reference_id
+            ?? $session->metadata['transaction_id']
+            ?? null;
+
+        if (!$transactionId) {
+            return;
+        }
+
+        try {
+            $payment = $this->findPaymentByTransactionId((string) $transactionId);
+            $payment->update(['status' => 'cancelled']);
+            $payment->order?->update(['payment_status' => 'cancelled']);
+        } catch (ValidationException) {
+            // Ignore
+        }
+    }
+
+    private function findPaymentByTransactionId(string $transactionId): Payment
+    {
+        if ($transactionId === '') {
+            throw ValidationException::withMessages([
+                'transaction_id' => 'Transaction ID is required.',
+            ]);
+        }
+
+        $payment = Payment::query()
+            ->where('transaction_id', $transactionId)
+            ->where('gateway', 'stripe')
+            ->first();
+
+        if ($payment === null) {
+            throw ValidationException::withMessages([
+                'transaction_id' => 'Stripe payment not found for the given transaction ID.',
+            ]);
+        }
+
+        return $payment;
+    }
+
+    private function generateTransactionId(Order $order): string
+    {
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $transactionId = sprintf(
+                'STR-%s-%s',
+                $order->order_number,
+                strtoupper(substr(uniqid(), -8)),
+            );
+
+            if (!Payment::query()->where('transaction_id', $transactionId)->exists()) {
+                return $transactionId;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate a unique Stripe transaction ID.');
+    }
+}
+
+
+
+
+
+Step 5: Edit OrderService.php:
+------------------------------
+Edit app/Services/OrderService.php:
+-------------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Order;
+use App\Models\OrderStatusHistory;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+
+class OrderService
+{
+    public function __construct(private readonly CartService $cartService) {}
+
+    /**
+     * Calculate the delivery charge for a given district.
+     */
+    public function deliveryChargeForDistrict(string $district): float
+    {
+        $delivery = config('shop.delivery');
+
+        return $district === $delivery['dhaka_district']
+            ? (float) $delivery['inside_dhaka']
+            : (float) $delivery['outside_dhaka'];
+    }
+
+    /**
+     * Place a Cash on Delivery order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeCodOrder(array $shipping): Order
+    {
+        return $this->placeOrder($shipping, 'cod', 'Order placed via Cash on Delivery.');
+    }
+
+    /**
+     * Place an SSLCommerz order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeSslcommerzOrder(array $shipping): Order
+    {
+        return $this->placeOrder($shipping, 'sslcommerz', 'Order placed via SSLCommerz. Awaiting online payment.');
+    }
+
+    /**
+     * Place a Stripe order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeStripeOrder(array $shipping): Order
+    {
+        return $this->placeOrder($shipping, 'stripe', 'Order placed via Stripe. Awaiting online payment.');
+    }
+
+    /**
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    private function placeOrder(array $shipping, string $paymentMethod, string $statusNote): Order
+    {
+        $items = $this->cartService->items();
+
+        if ($items === []) {
+            throw ValidationException::withMessages([
+                'cart' => 'Your cart is empty.',
+            ]);
+        }
+
+        $outOfStock = collect($items)->first(fn(array $item): bool => ! $item['inStock']);
+
+        if ($outOfStock !== null) {
+            throw ValidationException::withMessages([
+                'cart' => "{$outOfStock['name']} is no longer available.",
+            ]);
+        }
+
+        $subtotal = collect($items)->sum(
+            fn(array $item): float => $item['price'] * $item['qty'],
+        );
+
+        $deliveryCharge = $this->deliveryChargeForDistrict($shipping['district']);
+        $total = $subtotal + $deliveryCharge;
+
+        return DB::transaction(function () use ($shipping, $items, $subtotal, $deliveryCharge, $total, $paymentMethod, $statusNote): Order {
+            $order = Order::create([
+                'order_number' => $this->generateOrderNumber(),
+                'user_id' => Auth::id(),
+                'customer_name' => $shipping['customer_name'],
+                'phone' => $shipping['phone'],
+                'email' => $shipping['email'],
+                'district' => $shipping['district'],
+                'area' => $shipping['area'],
+                'address' => $shipping['address'],
+                'notes' => $shipping['notes'] ?? null,
+                'subtotal' => $subtotal,
+                'delivery_charge' => $deliveryCharge,
+                'total' => $total,
+                'payment_method' => $paymentMethod,
+                'payment_status' => 'pending',
+                'status' => 'pending',
+                'placed_at' => now(),
+                'coupon_id' => $shipping['coupon_id'] ?? null,
+                'coupon_code' => $shipping['coupon_code'] ?? null,
+                'discount_amount' => $shipping['discount_amount'] ?? 0,
+            ]);
+
+            foreach ($items as $item) {
+                $lineTotal = $item['price'] * $item['qty'];
+
+                $order->items()->create([
+                    'product_id' => $item['productId'],
+                    'product_name' => $item['name'],
+                    'unit_price' => $item['price'],
+                    'quantity' => $item['qty'],
+                    'line_total' => $lineTotal,
+                ]);
+            }
+
+            OrderStatusHistory::create([
+                'order_id' => $order->id,
+                'status' => 'pending',
+                'note' => $statusNote,
+                'changed_by' => Auth::id(),
+            ]);
+
+            $this->cartService->clear();
+
+            return $order;
+        });
+    }
+
+    /**
+     * Update order status and payment status from the admin panel.
+     *
+     * @param  array{
+     *     status: string,
+     *     payment_status: string,
+     *     note?: string|null,
+     * }  $data
+     */
+    public function updateFromAdmin(Order $order, array $data, ?int $changedBy = null): Order
+    {
+        $statusChanged = $order->status !== $data['status'];
+        $paymentStatusChanged = $order->payment_status !== $data['payment_status'];
+        $note = filled($data['note'] ?? null) ? (string) $data['note'] : null;
+
+        if (! $statusChanged && ! $paymentStatusChanged && $note === null) {
+            return $order;
+        }
+
+        return DB::transaction(function () use ($order, $data, $changedBy, $statusChanged, $paymentStatusChanged, $note): Order {
+            $order->update([
+                'status' => $data['status'],
+                'payment_status' => $data['payment_status'],
+            ]);
+
+            if ($statusChanged || $paymentStatusChanged || $note !== null) {
+                OrderStatusHistory::create([
+                    'order_id' => $order->id,
+                    'status' => $data['status'],
+                    'note' => $note ?? $this->adminStatusChangeNote($statusChanged, $paymentStatusChanged, $data),
+                    'changed_by' => $changedBy,
+                    'created_at' => now(),
+                ]);
+            }
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * @param  array{status: string, payment_status: string}  $data
+     */
+    private function adminStatusChangeNote(bool $statusChanged, bool $paymentStatusChanged, array $data): string
+    {
+        if ($statusChanged && $paymentStatusChanged) {
+            return "Order status changed to {$data['status']} and payment status changed to {$data['payment_status']}.";
+        }
+
+        if ($statusChanged) {
+            return "Order status changed to {$data['status']}.";
+        }
+
+        return "Payment status changed to {$data['payment_status']}.";
+    }
+
+    /**
+     * Generate a unique human-facing order number, e.g. SE-2026-000123.
+     */
+    private function generateOrderNumber(): string
+    {
+        $year = now()->format('Y');
+        $prefix = "SE-{$year}-";
+
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $suffix = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            $orderNumber = $prefix . $suffix;
+
+            if (! Order::where('order_number', $orderNumber)->exists()) {
+                return $orderNumber;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate a unique order number.');
+    }
+}
+
+
+
+
+
+
+
+Step 5: Controllers তৈরি:
+-------------------------
+5.1 Edit app/Http/Controllers/Storefront/StripeCallbackController.php:
+-----------------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Services\StripePaymentService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
+class StripeCallbackController extends Controller
+{
+    public function __construct(
+        private readonly StripePaymentService $stripeService,
+    ) {}
+
+    /**
+     * Handle the redirect from Stripe after a successful payment.
+     * Stripe appends ?session_id={CHECKOUT_SESSION_ID} to the success URL.
+     */
+    public function success(Request $request): RedirectResponse
+    {
+        $sessionId = $request->query('session_id');
+
+        if (! $sessionId) {
+            return redirect()->route('shop.payments.failed')
+                ->with('error', 'Missing Stripe session ID.');
+        }
+
+        try {
+            $payment = $this->stripeService->confirmSession((string) $sessionId);
+
+            return redirect()->route('shop.payments.success', [
+                'order' => $payment->order?->order_number,
+            ]);
+        } catch (ValidationException) {
+            return redirect()->route('shop.payments.failed')
+                ->with('error', 'Stripe payment could not be verified.');
+        }
+    }
+
+    /**
+     * Handle the redirect from Stripe when a user cancels payment.
+     */
+    public function cancel(Request $request): RedirectResponse
+    {
+        $orderNumber = $request->query('order');
+
+        if ($orderNumber) {
+            $this->stripeService->cancelByOrderNumber((string) $orderNumber);
+        }
+
+        return redirect()->route('shop.payments.cancelled', [
+            'order' => $orderNumber,
+        ]);
+    }
+}
+
+
+
+
+
+
+5.2 Edit app/Http/Controllers/Storefront/StripeWebhookController.php:
+-----------------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Services\StripePaymentService;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
+
+class StripeWebhookController extends Controller
+{
+    public function __construct(
+        private readonly StripePaymentService $stripeService,
+    ) {}
+
+    /**
+     * Handle incoming Stripe webhook events.
+     * This endpoint is excluded from CSRF verification.
+     */
+    public function handle(Request $request): Response
+    {
+        try {
+            $this->stripeService->handleWebhook($request);
+
+            return response('Webhook handled.', 200);
+        } catch (ValidationException $e) {
+            return response('Webhook signature verification failed.', 400);
+        } catch (\Throwable $e) {
+            return response('Webhook processing error: ' . $e->getMessage(), 500);
+        }
+    }
+}
+
+
+
+
+
+5.3 Edit app/Http/Controllers/Storefront/PaymentResultController.php:
+---------------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Models\Order;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class PaymentResultController extends Controller
+{
+    /**
+     * Display the payment success page.
+     */
+    public function success(Request $request): Response
+    {
+        return Inertia::render('shop/PaymentSuccess', [
+            'order' => $this->orderSummary($request->query('order')),
+        ]);
+    }
+
+    /**
+     * Display the payment failed page.
+     */
+    public function failed(Request $request): Response
+    {
+        return Inertia::render('shop/PaymentFailed', [
+            'order' => $this->orderSummary($request->query('order')),
+        ]);
+    }
+
+    /**
+     * Display the payment cancelled page.
+     */
+    public function cancelled(Request $request): Response
+    {
+        return Inertia::render('shop/PaymentCancelled', [
+            'order' => $this->orderSummary($request->query('order')),
+        ]);
+    }
+
+    /**
+     * @return array{orderNumber: string, total: float, paymentLabel: string}|null
+     */
+    private function orderSummary(?string $orderNumber): ?array
+    {
+        if (! filled($orderNumber)) {
+            return null;
+        }
+
+        $order = Order::query()
+            ->where('order_number', $orderNumber)
+            ->first();
+
+        if ($order === null) {
+            return null;
+        }
+
+        return [
+            'orderNumber' => $order->order_number,
+            'total'       => (float) $order->total,
+            'paymentLabel' => match ($order->payment_method) {
+                'stripe'     => 'Stripe',
+                'sslcommerz' => 'SSLCommerz',
+                default      => 'Cash on Delivery',
+            },
+        ];
+    }
+}
+
+
+
+
+
+
+
+5.4 Edit app/Http/Controllers/Storefront/CheckoutController.php:
+----------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Storefront\StoreCheckoutRequest;
+use App\Services\CartService;
+use App\Services\CouponService;
+use App\Services\OrderService;
+use App\Services\SslcommerzPaymentService;
+use App\Services\StripePaymentService;
+use Illuminate\Http\RedirectResponse;
+use Inertia\Inertia;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+
+class CheckoutController extends Controller
+{
+    public function __construct(
+        private readonly CartService $cartService,
+        private readonly OrderService $orderService,
+        private readonly SslcommerzPaymentService $paymentService,
+        private readonly StripePaymentService $stripeService,
+        private readonly CouponService $couponService,
+    ) {}
+
+    /**
+     * Display the checkout page.
+     */
+    public function index(): Response|RedirectResponse
+    {
+        if ($this->cartService->totalQty() === 0) {
+            return redirect()
+                ->route('shop.cart')
+                ->with('error', 'Your cart is empty. Add items before checkout.');
+        }
+
+        $delivery = config('shop.delivery');
+
+        return Inertia::render('shop/Checkout', [
+            'districts' => config('shop.districts'),
+            'deliveryCharges' => [
+                'insideDhaka' => (float) $delivery['inside_dhaka'],
+                'outsideDhaka' => (float) $delivery['outside_dhaka'],
+                'dhakaDistrict' => $delivery['dhaka_district'],
+            ],
+            'appliedCoupon' => session('applied_coupon'),
+            'stripeExchangeRate' => (float) config('stripe.exchange_rate', 0.0084),
+        ]);
+    }
+
+    /**
+     * Place an order and complete checkout.
+     */
+    public function store(StoreCheckoutRequest $request): RedirectResponse|SymfonyResponse
+    {
+        $validated = $request->validated();
+
+        // Re-validate the coupon server-side at the moment of order placement.
+        // Never trust the discount amount computed on the client.
+        $couponData = null;
+
+        if (!empty($validated['coupon_code'])) {
+            $result = $this->couponService->validate(
+                $validated['coupon_code'],
+                $this->cartService->subtotal(),
+                $validated['email'] ?? null,
+                $validated['phone'] ?? null,
+            );
+
+            if (!$result['valid']) {
+                session()->forget('applied_coupon');
+
+                return back()
+                    ->withErrors(['coupon_code' => $result['message']])
+                    ->withInput($request->except('coupon_code'));
+            }
+
+            $couponData = [
+                'coupon_id' => $result['coupon']->id,
+                'coupon_code' => $result['coupon']->code,
+                'discount_amount' => $result['discount'],
+            ];
+        }
+
+        $orderPayload = array_merge($validated, $couponData ?? []);
+
+        if ($validated['payment_method'] === 'sslcommerz') {
+            $order = $this->orderService->placeSslcommerzOrder($orderPayload);
+            $result = $this->paymentService->initiate($order);
+
+            if ($result['gateway_url'] === null) {
+                return redirect()
+                    ->route('shop.payments.failed', ['order' => $order->order_number])
+                    ->with('error', 'Unable to start online payment. Please try again.');
+            }
+
+            if ($couponData) {
+                $order->coupon->recordUsage();
+                session()->forget('applied_coupon');
+            }
+
+            return Inertia::location($result['gateway_url']);
+        }
+
+        if ($validated['payment_method'] === 'stripe') {
+            $order = $this->orderService->placeStripeOrder($orderPayload);
+            $result = $this->stripeService->initiate($order);
+
+            if ($result['checkout_url'] === null) {
+                return redirect()
+                    ->route('shop.payments.failed', ['order' => $order->order_number])
+                    ->with('error', 'Unable to start Stripe payment. Please try again.');
+            }
+
+            if ($couponData) {
+                $order->coupon->recordUsage();
+                session()->forget('applied_coupon');
+            }
+
+            return Inertia::location($result['checkout_url']);
+        }
+
+        $order = $this->orderService->placeCodOrder($orderPayload);
+
+        if ($couponData) {
+            $order->coupon->recordUsage();
+            session()->forget('applied_coupon');
+        }
+
+        return redirect()
+            ->route('shop.orders.success')
+            ->with('order', [
+                'orderNumber' => $order->order_number,
+                'total' => (float) $order->total,
+                'discount' => (float) $order->discount_amount,
+                'paymentLabel' => 'Cash on Delivery',
+            ]);
+    }
+}
+
+
+
+
+
+Step 6 Edit Routes রেজিস্টার করা: routes/web.php:
+------------------------------------------------
+<?php
+
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Storefront\CartController;
+use App\Http\Controllers\Storefront\CheckoutController;
+use App\Http\Controllers\Storefront\HomeController;
+use App\Http\Controllers\Storefront\OrderSuccessController;
+use App\Http\Controllers\Storefront\CouponController;
+use App\Http\Controllers\Storefront\PaymentResultController;
+use App\Http\Controllers\Storefront\ProductController;
+use App\Http\Controllers\Storefront\ShopController;
+use App\Http\Controllers\Storefront\SslcommerzCallbackController;
+use App\Http\Controllers\Storefront\StripeCallbackController;
+use App\Http\Controllers\Storefront\StripeWebhookController;
+use App\Http\Controllers\Storefront\WishlistController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', HomeController::class)->name('home');
+Route::get('/shop', ShopController::class)->name('shop.index');
+Route::get('/products/{slug}', [ProductController::class, 'show'])->name('shop.products.show');
+
+// Cart
+Route::get('/cart', [CartController::class, 'index'])->name('shop.cart');
+Route::post('/cart', [CartController::class, 'store'])->name('shop.cart.store');
+Route::patch('/cart/{productId}', [CartController::class, 'update'])->name('shop.cart.update');
+Route::delete('/cart', [CartController::class, 'clear'])->name('shop.cart.clear');
+Route::delete('/cart/{productId}', [CartController::class, 'destroy'])->name('shop.cart.destroy');
+
+Route::get('/wishlist', [WishlistController::class, 'index'])->name('shop.wishlist');
+Route::middleware('auth')->group(function () {
+    Route::post('/wishlist', [WishlistController::class, 'store'])->name('shop.wishlist.store');
+    Route::delete('/wishlist', [WishlistController::class, 'clear'])->name('shop.wishlist.clear');
+    Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy'])->name('shop.wishlist.destroy');
+});
+Route::get('/checkout', [CheckoutController::class, 'index'])->name('shop.checkout');
+Route::post('/checkout', [CheckoutController::class, 'store'])->name('shop.checkout.store');
+Route::get('/orders/success', OrderSuccessController::class)->name('shop.orders.success');
+
+Route::post('checkout/coupon', [CouponController::class, 'apply'])
+    ->name('shop.checkout.coupon.apply');
+Route::delete('checkout/coupon', [CouponController::class, 'remove'])
+    ->name('shop.checkout.coupon.remove');
+
+Route::get('/orders/payment/success', [PaymentResultController::class, 'success'])->name('shop.payments.success');
+Route::get('/orders/payment/failed', [PaymentResultController::class, 'failed'])->name('shop.payments.failed');
+Route::get('/orders/payment/cancelled', [PaymentResultController::class, 'cancelled'])->name('shop.payments.cancelled');
+
+Route::post('/payments/sslcommerz/success', [SslcommerzCallbackController::class, 'success'])->name('shop.payments.sslcommerz.success');
+Route::post('/payments/sslcommerz/failure', [SslcommerzCallbackController::class, 'failure'])->name('shop.payments.sslcommerz.failure');
+Route::post('/payments/sslcommerz/cancel', [SslcommerzCallbackController::class, 'cancel'])->name('shop.payments.sslcommerz.cancel');
+
+// Stripe redirect callbacks (GET — from Stripe hosted checkout)
+Route::get('/payments/stripe/success', [StripeCallbackController::class, 'success'])->name('shop.payments.stripe.success');
+Route::get('/payments/stripe/cancel', [StripeCallbackController::class, 'cancel'])->name('shop.payments.stripe.cancel');
+
+// Stripe webhook — must be OUTSIDE CSRF middleware (raw POST from Stripe servers)
+Route::post('/payments/stripe/webhook', [StripeWebhookController::class, 'handle'])
+    ->name('shop.payments.stripe.webhook')
+    ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
+
+Route::middleware(['auth', 'verified', 'admin'])->group(function () {
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+});
+
+require __DIR__ . '/settings.php';
+
+
+
+
+
+
+Order & Validation সার্ভিস আপডেট: OrderService.php এ placeStripeOrder() যুক্ত করা হয়েছে এবং StoreCheckoutRequest.php ও ফ্রন্টএন্ড ভ্যালিডেশনে 'stripe' মেথড অনুমোদন করা হয়েছে।
+
+
+
+
+Step 7: Edit Request StoreCheckoutRequest.php:
+-----------------------------------------------
+Edit app/Http/Requests/Storefront/StoreCheckoutRequest.php:
+-----------------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Storefront;
+
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class StoreCheckoutRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'customer_name' => ['required', 'string', 'max:150'],
+            'phone' => ['required', 'string', 'regex:/^01\d{9}$/'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'district' => ['required', 'string', Rule::in(config('shop.districts'))],
+            'area' => ['required', 'string', 'max:150'],
+            'address' => ['required', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'payment_method' => ['required', Rule::in(['cod', 'sslcommerz', 'stripe'])],
+            'coupon_code' => ['nullable', 'string', 'max:100'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'phone.regex' => 'Enter a valid 11-digit Bangladesh phone number (01XXXXXXXXX).',
+        ];
+    }
+
+    /**
+     * Normalise the phone number before validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('phone')) {
+            $this->merge([
+                'phone' => preg_replace('/[\s-]+/', '', (string) $this->input('phone')),
+            ]);
+        }
+    }
+}
+
+
+
+Step 8:
+-------
+UI/Front-end আপডেট এবং পেমেন্ট অপশন যোগ: checkout ফাইলে (Checkout.vue) Stripe এর একটি প্রফেশনাল রেডিও অপশন এবং ফুটার ফাইলে (ShopFooter.vue) একটি সুন্দর Stripe ব্যাজ দেওয়া হয়েছে।
+
+
+8.1 Edit resources/js/components/shop/ShopCheckoutSummary.vue:
+---------------------------------------------------------------
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { formatTaka } from '@/lib/shop/currency';
+import type { ShopCartItem } from '@/types/shop';
+
+const {
+    items,
+    subtotal,
+    deliveryCharge,
+    deliveryNote,
+    discount = 0,
+    couponCode = null,
+    isEmpty,
+    processing = false,
+    submitLabel = 'Place Order',
+    paymentMethod = 'cod',
+    stripeExchangeRate = 0.0084,
+} = defineProps<{
+    items: ShopCartItem[];
+    subtotal: number;
+    deliveryCharge: number;
+    deliveryNote: string;
+    discount?: number;
+    couponCode?: string | null;
+    isEmpty: boolean;
+    processing?: boolean;
+    submitLabel?: string;
+    paymentMethod?: string;
+    stripeExchangeRate?: number;
+}>();
+
+const emit = defineEmits<{
+    increment: [productId: number];
+    decrement: [productId: number];
+    remove: [productId: number];
+}>();
+
+const isSummaryOpen = ref(false);
+
+const itemCount = computed(() =>
+    items.reduce((sum, item) => sum + item.qty, 0),
+);
+
+const grandTotal = computed(
+    () => Math.max(subtotal + deliveryCharge - (discount ?? 0), 0),
+);
+
+function toggleSummary(): void {
+    if (window.innerWidth >= 1024) {
+        return;
+    }
+
+    isSummaryOpen.value = !isSummaryOpen.value;
+}
+</script>
+
+<template>
+    <div class="rounded-xl border border-gray-200 bg-white">
+        <button
+            type="button"
+            class="flex w-full items-center justify-between gap-2 p-5 text-left lg:cursor-default"
+            @click="toggleSummary"
+        >
+            <span class="text-lg font-semibold text-gray-900"
+                >Order Summary</span
+            >
+            <span class="flex items-center gap-2">
+                <span
+                    class="rounded-full bg-shop-primary-50 px-2.5 py-0.5 text-xs font-medium text-shop-primary-700"
+                >
+                    {{ itemCount }}
+                    {{ itemCount === 1 ? 'item' : 'items' }}
+                </span>
+                <svg
+                    class="h-5 w-5 text-gray-400 lg:hidden"
+                    :class="{ 'rotate-180': isSummaryOpen }"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M19 9l-7 7-7-7"
+                    />
+                </svg>
+            </span>
+        </button>
+
+        <div
+            class="border-t border-gray-100 lg:block"
+            :class="isSummaryOpen ? 'block' : 'hidden'"
+        >
+            <ul class="divide-y divide-gray-100 px-5">
+                <li
+                    v-if="isEmpty"
+                    class="py-8 text-center text-sm text-gray-400"
+                >
+                    Your cart is empty.
+                </li>
+                <li
+                    v-for="item in items"
+                    v-else
+                    :key="item.productId"
+                    class="flex gap-3 py-4"
+                >
+                    <div
+                        class="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
+                    >
+                        <img
+                            :src="item.img"
+                            :alt="item.name"
+                            class="h-full w-full object-cover"
+                        />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-start justify-between gap-2">
+                            <p
+                                class="line-clamp-1 text-sm font-medium text-gray-900"
+                            >
+                                {{ item.name }}
+                            </p>
+                            <button
+                                type="button"
+                                :aria-label="`Remove ${item.name}`"
+                                class="shrink-0 rounded text-gray-300 transition hover:text-red-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                @click="emit('remove', item.productId)"
+                            >
+                                <svg
+                                    class="h-4 w-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="mt-0.5 text-xs text-gray-400">
+                            {{ formatTaka(item.price) }} each
+                        </p>
+                        <div class="mt-2 flex items-center justify-between">
+                            <div
+                                class="inline-flex items-center rounded-lg border border-gray-300"
+                            >
+                                <button
+                                    type="button"
+                                    :aria-label="`Decrease quantity of ${item.name}`"
+                                    class="inline-flex h-8 w-8 items-center justify-center rounded-l-lg text-gray-600 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
+                                    :disabled="item.qty <= 1"
+                                    @click="emit('decrement', item.productId)"
+                                >
+                                    <svg
+                                        class="h-4 w-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M20 12H4"
+                                        />
+                                    </svg>
+                                </button>
+                                <span
+                                    class="w-9 text-center text-sm font-medium text-gray-900"
+                                    >{{ item.qty }}</span
+                                >
+                                <button
+                                    type="button"
+                                    :aria-label="`Increase quantity of ${item.name}`"
+                                    class="inline-flex h-8 w-8 items-center justify-center rounded-r-lg text-gray-600 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    @click="emit('increment', item.productId)"
+                                >
+                                    <svg
+                                        class="h-4 w-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M12 4v16m8-8H4"
+                                        />
+                                    </svg>
+                                </button>
+                            </div>
+                            <span class="text-sm font-semibold text-gray-900">{{
+                                formatTaka(item.price * item.qty)
+                            }}</span>
+                        </div>
+                    </div>
+                </li>
+            </ul>
+
+            <div class="space-y-2.5 border-t border-gray-100 px-5 py-4 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Subtotal</span>
+                    <span class="font-medium text-gray-900">{{
+                        formatTaka(subtotal)
+                    }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">
+                        Delivery
+                        <span v-if="deliveryNote" class="text-gray-400">{{
+                            deliveryNote
+                        }}</span>
+                    </span>
+                    <span class="font-medium text-gray-900">{{
+                        formatTaka(deliveryCharge)
+                    }}</span>
+                </div>
+                <div v-if="discount" class="flex justify-between text-sm text-green-600">
+                    <span>Coupon Discount</span>
+                    <span class="font-medium">-{{ formatTaka(discount) }}</span>
+                </div>
+                <div
+                    class="mt-2 flex justify-between border-t border-gray-100 pt-3 text-base"
+                >
+                    <span class="font-semibold text-gray-900">Total</span>
+                    <span class="font-bold text-shop-primary-600">{{
+                        formatTaka(grandTotal)
+                    }}</span>
+                </div>
+                <div v-if="paymentMethod === 'stripe'" class="flex justify-between text-xs text-[#635BFF] font-semibold mt-1">
+                    <span>USD Equivalent (Stripe)</span>
+                    <span>${{ (grandTotal * stripeExchangeRate).toFixed(2) }} USD</span>
+                </div>
+            </div>
+
+            <div class="px-5 pb-5">
+                <button
+                    type="submit"
+                    class="w-full rounded-lg bg-shop-primary-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-shop-primary-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="isEmpty || processing"
+                >
+                    {{ processing ? 'Processing…' : submitLabel }}
+                </button>
+                <p
+                    class="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-400"
+                >
+                    <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                        />
+                    </svg>
+                    Your information is safe & encrypted
+                </p>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
+8.1 Edit resources/js/components/shop/ShopFooter.vue:
+-----------------------------------------------------
+<script setup lang="ts">
+import { computed } from 'vue';
+import { Link } from '@inertiajs/vue3';
+import ShopLogo from '@/components/shop/ShopLogo.vue';
+import { home } from '@/routes';
+import shop from '@/routes/shop';
+
+const year = computed(() => new Date().getFullYear());
+</script>
+
+<template>
+    <footer class="border-t border-gray-200/60 bg-[#FFF5ED] text-[#525252]">
+        <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+            <div class="grid grid-cols-1 gap-10 md:grid-cols-4">
+                <!-- ব্র্যান্ড স্টোরি ও সোশ্যালস -->
+                <div class="space-y-5">
+                    <!-- এখানে variant="light" বা ডিফল্ট লোগো ব্যবহার করতে পারেন যা লাইট ব্যাকগ্রাউন্ডে ভালো দেখায় -->
+                    <ShopLogo variant="light" />
+                    <p
+                        class="max-w-sm text-xs leading-relaxed font-medium text-[#737373]"
+                    >
+                        Quality products delivered across Bangladesh. Shop with
+                        confidence — Cash on Delivery and secure online payment
+                        available.
+                    </p>
+                    <div class="flex gap-2 pt-2">
+                        <a
+                            href="#"
+                            aria-label="Facebook"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/5 text-gray-600 transition-colors hover:bg-[#87E64B] hover:text-black"
+                        >
+                            <svg
+                                class="h-4 w-4"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987H7.898v-2.89h2.54V9.797c0-2.507 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"
+                                />
+                            </svg>
+                        </a>
+                        <a
+                            href="#"
+                            aria-label="Instagram"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/5 text-gray-600 transition-colors hover:bg-[#87E64B] hover:text-black"
+                        >
+                            <svg
+                                class="h-4 w-4"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    d="M12 2.2c3.2 0 3.6 0 4.9.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.86s0 3.6-.07 4.86c-.05 1.17-.25 1.8-.41 2.23a3.7 3.7 0 01-.9 1.38c-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.86.07s-3.6 0-4.86-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 01-1.38-.9 3.7 3.7 0 01-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.21 15.6 2.2 15.2 2.2 12s0-3.6.07-4.86c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.4 2.21 8.8 2.2 12 2.2zm0 1.8c-3.15 0-3.52.01-4.76.07-.9.04-1.39.2-1.71.32-.43.17-.74.37-1.06.69-.32.32-.52.63-.69 1.06-.12.32-.28.81-.32 1.71-.06 1.24-.07 1.61-.07 4.76s.01 3.52.07 4.76c.04.9.2 1.39.32 1.71.17.43.37.74.69 1.06.32.32.63.52 1.06.69.32.12.81.28 1.71.32 1.24.06 1.61.07 4.76.07s3.52-.01 4.76-.07c.9-.04 1.39-.2 1.71-.32.43-.17.74-.37 1.06-.69.32-.32.52-.63.69-1.06.12-.32.28-.81.32-1.71.06-1.24.07-1.61.07-4.76s-.01-3.52-.07-4.76c-.04-.9-.2-1.39-.32-1.71a2.86 2.86 0 00-.69-1.06 2.86 2.86 0 00-1.06-.69c-.32-.12-.81-.28-1.71-.32-1.24-.06-1.61-.07-4.76-.07zM12 7.4a4.6 4.6 0 100 9.2 4.6 4.6 0 000-9.2zm0 7.6a3 3 0 110-6 3 3 0 010 6zm5.85-7.8a1.08 1.08 0 11-2.15 0 1.08 1.08 0 012.15 0z"
+                                />
+                            </svg>
+                        </a>
+                        <a
+                            href="#"
+                            aria-label="YouTube"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/5 text-gray-600 transition-colors hover:bg-[#87E64B] hover:text-black"
+                        >
+                            <svg
+                                class="h-4 w-4"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    d="M23.5 6.2a3 3 0 00-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 00.5 6.2 31.3 31.3 0 000 12a31.3 31.3 0 00.5 5.8 3 3 0 002.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 002.1-2.1A31.3 31.3 0 0024 12a31.3 31.3 0 00-.5-5.8zM9.5 15.5v-7l6.5 3.5-6.5 3.5z"
+                                />
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- কুইক লিংকস -->
+                <div>
+                    <h3
+                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
+                    >
+                        Quick Links
+                    </h3>
+                    <ul class="mt-4 space-y-2.5 text-xs font-semibold">
+                        <li>
+                            <Link
+                                :href="home()"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >Home</Link
+                            >
+                        </li>
+                        <li>
+                            <Link
+                                :href="shop.index()"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >Shop</Link
+                            >
+                        </li>
+                        <li>
+                            <a
+                                href="#bestselling"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >Best Selling</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                href="#newcollection"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >New Collection</a
+                            >
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- কাস্টমার সার্ভিস -->
+                <div>
+                    <h3
+                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
+                    >
+                        Customer Service
+                    </h3>
+                    <ul class="mt-4 space-y-2.5 text-xs font-semibold">
+                        <li>
+                            <a
+                                href="#"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >Track Your Order</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                href="#"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >Shipping &amp; Delivery</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                href="#"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >Returns &amp; Refunds</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                href="#"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
+                                >FAQ</a
+                            >
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- কন্টাক্ট ইনফো -->
+                <div>
+                    <h3
+                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
+                    >
+                        Contact Us
+                    </h3>
+                    <ul
+                        class="mt-4 space-y-3 text-xs font-semibold text-[#525252]"
+                    >
+                        <li class="flex items-start gap-2.5">
+                            <svg
+                                class="mt-0.5 h-4 w-4 shrink-0 text-gray-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="2"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"
+                                />
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                            </svg>
+                            <span class="leading-relaxed"
+                                >House 12, Road 5, Dhanmondi, Dhaka 1205</span
+                            >
+                        </li>
+                        <li class="flex items-center gap-2.5">
+                            <svg
+                                class="h-4 w-4 shrink-0 text-gray-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="2"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                                />
+                            </svg>
+                            <a
+                                href="tel:+8801700000000"
+                                class="transition-colors hover:text-[#87E64B]"
+                                >+880 1700-000000</a
+                            >
+                        </li>
+                        <li class="flex items-center gap-2.5">
+                            <svg
+                                class="h-4 w-4 shrink-0 text-gray-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="2"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                />
+                            </svg>
+                            <a
+                                href="mailto:support@shopbd.com.bd"
+                                class="transition-colors hover:text-[#87E64B]"
+                                >support@shopbd.com.bd</a
+                            >
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- বটম বার (কপিরাইট ও পেমেন্ট ব্যাজ) -->
+            <div
+                class="mt-12 flex flex-col items-center gap-4 border-t border-gray-200/60 pt-6 sm:flex-row sm:justify-between"
+            >
+                <p class="text-[11px] font-semibold text-[#737373]">
+                    © {{ year }} ShopBD. All rights reserved.
+                </p>
+                <div class="flex items-center gap-2">
+                    <span
+                        class="mr-1 text-[11px] font-bold tracking-wider text-[#737373] uppercase"
+                        >We accept</span
+                    >
+                    <span
+                        class="rounded border border-black/5 bg-black/[0.03] px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
+                    >
+                        COD
+                    </span>
+                    <span
+                        class="rounded border border-black/5 bg-black/[0.03] px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
+                    >
+                        SSLCommerz
+                    </span>
+                    <span
+                        class="rounded border border-[#635BFF]/20 bg-[#635BFF]/5 px-2.5 py-1 text-[10px] font-bold tracking-wider text-[#635BFF] uppercase"
+                    >
+                        Stripe
+                    </span>
+                </div>
+            </div>
+        </div>
+    </footer>
+</template>
+
+
+
+
+
+8.3 Edit resources/js/pages/shop/Checkout.vue:
+-----------------------------------------------
+<script setup lang="ts">
+import { Head, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import ShopCheckoutSummary from '@/components/shop/ShopCheckoutSummary.vue';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import { useShopCart } from '@/composables/shop/useShopCart';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import type { ShopCheckoutConfig } from '@/types/shop';
+import shop from '@/routes/shop';
+
+type PaymentMethod = 'cod' | 'sslcommerz' | 'stripe';
+
+type AppliedCoupon = {
+    code: string;
+    discount: number;
+};
+
+const { districts, deliveryCharges, appliedCoupon, stripeExchangeRate = 0.0084 } = defineProps<{
+    districts: string[];
+    deliveryCharges: ShopCheckoutConfig;
+    appliedCoupon?: AppliedCoupon | null;
+    stripeExchangeRate?: number;
+}>();
+
+const { cart, cartSubtotal, updateQty, removeItem } = useShopCart();
+const { showToast } = useShopUi();
+
+const form = useForm({
+    customer_name: '',
+    phone: '',
+    email: '',
+    district: '',
+    area: '',
+    address: '',
+    notes: '',
+    payment_method: 'cod' as PaymentMethod,
+    coupon_code: appliedCoupon?.code ?? '',
+});
+
+// --- Coupon state ---
+const couponInput = ref('');
+const coupon = ref<AppliedCoupon | null>(appliedCoupon ?? null);
+const couponError = ref('');
+const couponApplying = ref(false);
+
+const deliveryCharge = computed(() => {
+    if (cart.value.length === 0) {
+        return 0;
+    }
+
+    if (!form.district) {
+        return deliveryCharges.outsideDhaka;
+    }
+
+    return form.district === deliveryCharges.dhakaDistrict
+        ? deliveryCharges.insideDhaka
+        : deliveryCharges.outsideDhaka;
+});
+
+const deliveryNote = computed(() => {
+    if (cart.value.length === 0 || !form.district) {
+        return '';
+    }
+
+    return form.district === deliveryCharges.dhakaDistrict
+        ? '(Inside Dhaka)'
+        : '(Outside Dhaka)';
+});
+
+const couponDiscount = computed(() => coupon.value?.discount ?? 0);
+
+const grandTotal = computed(() =>
+    Math.max(
+        cartSubtotal.value + deliveryCharge.value - couponDiscount.value,
+        0,
+    ),
+);
+
+const submitLabel = computed(() => {
+    if (form.payment_method === 'sslcommerz') return 'Proceed to Payment';
+    if (form.payment_method === 'stripe') return 'Pay with Stripe';
+    return 'Place Order';
+});
+
+function handleIncrement(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    if (item) {
+        updateQty(productId, item.qty + 1);
+    }
+}
+
+function handleDecrement(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    if (item && item.qty > 1) {
+        updateQty(productId, item.qty - 1);
+    }
+}
+
+function handleRemove(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    removeItem(productId);
+    if (item) {
+        showToast(`Removed: ${item.name}`);
+    }
+}
+
+async function applyCoupon(): Promise<void> {
+    const code = couponInput.value.trim();
+
+    if (!code) {
+        couponError.value = 'Please enter a coupon code.';
+        return;
+    }
+
+    couponApplying.value = true;
+    couponError.value = '';
+
+    try {
+        const response = await fetch(shop.checkout.coupon.apply.url(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN':
+                    document
+                        .querySelector('meta[name="csrf-token"]')
+                        ?.getAttribute('content') ?? '',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                code,
+                email: form.email || null,
+                phone: form.phone || null,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            couponError.value = data.message ?? 'Unable to apply this coupon.';
+            return;
+        }
+
+        coupon.value = {
+            code: data.code,
+            discount: data.discount,
+        };
+        form.coupon_code = data.code;
+        couponInput.value = '';
+        showToast(data.message ?? 'Coupon applied.');
+    } catch {
+        couponError.value = 'Something went wrong. Please try again.';
+    } finally {
+        couponApplying.value = false;
+    }
+}
+
+async function removeCoupon(): Promise<void> {
+    try {
+        await fetch(shop.checkout.coupon.remove.url(), {
+            method: 'DELETE',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN':
+                    document
+                        .querySelector('meta[name="csrf-token"]')
+                        ?.getAttribute('content') ?? '',
+            },
+            credentials: 'same-origin',
+        });
+    } finally {
+        coupon.value = null;
+        form.coupon_code = '';
+        couponError.value = '';
+        showToast('Coupon removed.');
+    }
+}
+
+function handleSubmit(): void {
+    if (cart.value.length === 0) {
+        showToast('Your cart is empty');
+        return;
+    }
+
+    form.post(shop.checkout.store.url(), {
+        preserveScroll: true,
+        onError: (errors) => {
+            if (errors.coupon_code) {
+                couponError.value = errors.coupon_code;
+                coupon.value = null;
+            }
+            showToast('Please complete the highlighted fields');
+        },
+    });
+}
+</script>
+
+<template>
+    <Head title="Checkout">
+        <meta
+            name="description"
+            content="Secure checkout with Cash on Delivery or SSLCommerz online payment. Delivery across Bangladesh."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            rel="preconnect"
+            href="https://fonts.gstatic.com"
+            crossorigin="anonymous"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+    </Head>
+
+    <div class="bg-gray-50 py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb
+                :items="[
+                    { label: 'Cart', href: shop.cart.url() },
+                    { label: 'Checkout' },
+                ]"
+            />
+
+            <form
+                novalidate
+                class="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8"
+                @submit.prevent="handleSubmit"
+            >
+                <div class="space-y-6 lg:col-span-2">
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Shipping Details
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Where should we deliver your order?
+                        </p>
+
+                        <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label
+                                    for="customer_name"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Full name
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="customer_name"
+                                    v-model="form.customer_name"
+                                    name="customer_name"
+                                    type="text"
+                                    required
+                                    autocomplete="name"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.customer_name
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="e.g. Rina Akter"
+                                />
+                                <p
+                                    v-show="form.errors.customer_name"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.customer_name }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="phone"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Phone
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="phone"
+                                    v-model="form.phone"
+                                    name="phone"
+                                    type="tel"
+                                    required
+                                    autocomplete="tel"
+                                    inputmode="numeric"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.phone
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="01XXXXXXXXX"
+                                />
+                                <p
+                                    v-show="form.errors.phone"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.phone }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="email"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Email
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="email"
+                                    v-model="form.email"
+                                    name="email"
+                                    type="email"
+                                    required
+                                    autocomplete="email"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.email
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="you@example.com"
+                                />
+                                <p
+                                    v-show="form.errors.email"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.email }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="district"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    District
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <select
+                                    id="district"
+                                    v-model="form.district"
+                                    name="district"
+                                    required
+                                    class="w-full rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.district
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                >
+                                    <option value="">Select district</option>
+                                    <option
+                                        v-for="district in districts"
+                                        :key="district"
+                                        :value="district"
+                                    >
+                                        {{ district }}
+                                    </option>
+                                </select>
+                                <p
+                                    v-show="form.errors.district"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.district }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="area"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Area / Thana
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="area"
+                                    v-model="form.area"
+                                    name="area"
+                                    type="text"
+                                    required
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.area
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="e.g. Dhanmondi"
+                                />
+                                <p
+                                    v-show="form.errors.area"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.area }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="address"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Full address
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <textarea
+                                    id="address"
+                                    v-model="form.address"
+                                    name="address"
+                                    rows="2"
+                                    required
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.address
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="House, road, and any landmark"
+                                />
+                                <p
+                                    v-show="form.errors.address"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.address }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="notes"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Order notes
+                                    <span class="text-gray-400"
+                                        >(optional)</span
+                                    >
+                                </label>
+                                <textarea
+                                    id="notes"
+                                    v-model="form.notes"
+                                    name="notes"
+                                    rows="2"
+                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    placeholder="Delivery instructions, preferred time, etc."
+                                />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Coupon Code
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Have a discount code? Apply it below.
+                        </p>
+
+                        <div
+                            v-if="!coupon"
+                            class="mt-4 flex flex-col gap-2 sm:flex-row"
+                        >
+                            <input
+                                v-model="couponInput"
+                                type="text"
+                                class="w-full flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 uppercase focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                placeholder="e.g. SUMMER20"
+                                :disabled="couponApplying"
+                                @keydown.enter.prevent="applyCoupon"
+                            />
+                            <button
+                                type="button"
+                                class="shrink-0 rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="couponApplying"
+                                @click="applyCoupon"
+                            >
+                                {{ couponApplying ? 'Applying...' : 'Apply' }}
+                            </button>
+                        </div>
+
+                        <div
+                            v-else
+                            class="mt-4 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3"
+                        >
+                            <div>
+                                <p class="text-sm font-semibold text-green-800">
+                                    {{ coupon.code }} applied
+                                </p>
+                                <p class="text-sm text-green-700">
+                                    You saved ৳{{ coupon.discount.toFixed(2) }}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="text-sm font-medium text-red-600 hover:underline"
+                                @click="removeCoupon"
+                            >
+                                Remove
+                            </button>
+                        </div>
+
+                        <p
+                            v-show="couponError"
+                            class="mt-2 text-sm text-red-600"
+                        >
+                            {{ couponError }}
+                        </p>
+                    </section>
+
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Payment Method
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Choose how you would like to pay for your order.
+                        </p>
+
+                        <div class="mt-5 space-y-3">
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'cod'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="cod"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-shop-primary-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h2m2-6h10a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2v-6a2 2 0 012-2zm7 5a2 2 0 11-4 0 2 2 0 014 0z"
+                                    />
+                                </svg>
+                                <div>
+                                    <p
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Cash on Delivery
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay the delivery agent in cash when you
+                                        receive your order.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'sslcommerz'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="sslcommerz"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-shop-primary-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                    />
+                                </svg>
+                                <div>
+                                    <p
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Pay Online (SSLCommerz)
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay securely with bKash, Nagad, cards,
+                                        or mobile banking via SSLCommerz.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <!-- ===== Stripe ===== -->
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'stripe'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="stripe"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <!-- Stripe card icon -->
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-[#635BFF]"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6Zm2 0v2h16V6H4Zm0 4v2h4v-2H4Zm0 4v2h4v-2H4Zm6-4v2h2v-2h-2Zm4 0v2h2v-2h-2Zm-4 4v2h2v-2h-2Zm4 0v2h4v-2h-4Z" />
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-semibold text-gray-900">
+                                        Pay with Stripe
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay securely with Visa, Mastercard, or
+                                        any major credit / debit card via Stripe.
+                                    </p>
+                                    <div
+                                        v-if="form.payment_method === 'stripe'"
+                                        class="mt-2 text-xs font-semibold text-[#635BFF] bg-[#635BFF]/5 border border-[#635BFF]/10 rounded-lg px-2.5 py-1.5 inline-flex items-center gap-1.5 transition-all duration-300"
+                                    >
+                                        <span class="relative flex h-2 w-2">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#635BFF] opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-2 w-2 bg-[#635BFF]"></span>
+                                        </span>
+                                        Amount to pay is approx. ${{ (grandTotal * stripeExchangeRate).toFixed(2) }} USD (BDT {{ grandTotal.toLocaleString() }})
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <p
+                            v-show="form.errors.payment_method"
+                            class="mt-3 text-sm text-red-600"
+                        >
+                            {{ form.errors.payment_method }}
+                        </p>
+                    </section>
+                </div>
+
+                <div class="lg:col-span-1">
+                    <div class="lg:sticky lg:top-24">
+                        <ShopCheckoutSummary
+                            :items="cart"
+                            :subtotal="cartSubtotal"
+                            :delivery-charge="deliveryCharge"
+                            :delivery-note="deliveryNote"
+                            :discount="couponDiscount"
+                            :coupon-code="coupon?.code ?? null"
+                            :grand-total="grandTotal"
+                            :is-empty="cart.length === 0"
+                            :processing="form.processing"
+                            :submit-label="submitLabel"
+                            :payment-method="form.payment_method"
+                            :stripe-exchange-rate="stripeExchangeRate"
+                            @increment="handleIncrement"
+                            @decrement="handleDecrement"
+                            @remove="handleRemove"
+                        />
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
+Step 9: Edit Migrations:
+--------------------------
+database/migrations/2026_06_25_070957_create_orders_table.php:
+-----------------------------------------------------------------
+ Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('coupon_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+            $table->string('coupon_code')
+                ->nullable();
+            $table->decimal('discount_amount', 10, 2)
+                ->default(0);
+            $table->string('order_number', 32)->unique();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('customer_name', 150);
+            $table->string('phone', 20)->index();
+            $table->string('email');
+            $table->string('district', 100);
+            $table->string('area', 150);
+            $table->text('address');
+            $table->text('notes')->nullable();
+            $table->decimal('subtotal', 12, 2);
+            $table->decimal('delivery_charge', 10, 2)->default(0);
+            $table->decimal('total', 12, 2);
+            $table->enum('payment_method', ['cod', 'sslcommerz', 'stripe']);
+            $table->enum('payment_status', ['pending', 'paid', 'failed', 'cancelled'])->default('pending')->index();
+            $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])->default('pending')->index();
+            $table->timestamp('placed_at')->nullable();
+            $table->timestamps();
+
+            $table->index('created_at');
+        });

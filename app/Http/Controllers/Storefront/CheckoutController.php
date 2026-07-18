@@ -8,6 +8,7 @@ use App\Services\CartService;
 use App\Services\CouponService;
 use App\Services\OrderService;
 use App\Services\SslcommerzPaymentService;
+use App\Services\StripePaymentService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,6 +20,7 @@ class CheckoutController extends Controller
         private readonly CartService $cartService,
         private readonly OrderService $orderService,
         private readonly SslcommerzPaymentService $paymentService,
+        private readonly StripePaymentService $stripeService,
         private readonly CouponService $couponService,
     ) {}
 
@@ -43,6 +45,7 @@ class CheckoutController extends Controller
                 'dhakaDistrict' => $delivery['dhaka_district'],
             ],
             'appliedCoupon' => session('applied_coupon'),
+            'stripeExchangeRate' => (float) config('stripe.exchange_rate', 0.0084),
         ]);
     }
 
@@ -98,6 +101,24 @@ class CheckoutController extends Controller
             }
 
             return Inertia::location($result['gateway_url']);
+        }
+
+        if ($validated['payment_method'] === 'stripe') {
+            $order = $this->orderService->placeStripeOrder($orderPayload);
+            $result = $this->stripeService->initiate($order);
+
+            if ($result['checkout_url'] === null) {
+                return redirect()
+                    ->route('shop.payments.failed', ['order' => $order->order_number])
+                    ->with('error', 'Unable to start Stripe payment. Please try again.');
+            }
+
+            if ($couponData) {
+                $order->coupon->recordUsage();
+                session()->forget('applied_coupon');
+            }
+
+            return Inertia::location($result['checkout_url']);
         }
 
         $order = $this->orderService->placeCodOrder($orderPayload);
