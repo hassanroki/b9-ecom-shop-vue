@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import { useShopCatalog } from '@/composables/shop/useShopCatalog';
 import { useShopUi } from '@/composables/shop/useShopUi';
 import { home, login } from '@/routes';
-import shop from '@/routes/shop';
 import customer from '@/routes/customer';
+import shop from '@/routes/shop';
+
+interface SuggestionCategory {
+    name: string;
+    slug: string;
+    url: string;
+}
+
+interface SuggestionProduct {
+    id: number;
+    name: string;
+    slug: string;
+    price: number;
+    img: string | null;
+    url: string;
+}
 
 const page = usePage();
 const { isMobileMenuOpen, closeMobileMenu } = useShopUi();
@@ -16,23 +31,78 @@ const isShopPage = computed(() => page.component === 'shop/Shop');
 // লগিন স্ট্যাটাস চেক
 const isAuthenticated = computed(() => !!page.props.auth?.user);
 
-// My Account link href: লগিন থাকলে dashboard, না থাকলে login পেজ
+// My Account link href
 const accountHref = computed(() =>
-    isAuthenticated.value ? customer.dashboard() : login()
+    isAuthenticated.value ? customer.dashboard() : login(),
 );
 
+// লাইভ সার্চ এবং ড্রপডাউন স্টেট
+const searchQuery = ref('');
+const suggestions = ref<{
+    categories: SuggestionCategory[];
+    products: SuggestionProduct[];
+}>({
+    categories: [],
+    products: [],
+});
+const isLoading = ref(false);
+const showDropdown = ref(false);
+
+let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// ইনপুট টাইপ করার সময় সাজেশন ফেচ করার লজিক (Debounced)
 function handleSearchInput(event: Event): void {
-    if (!isShopPage.value) {
+    const val = (event.target as HTMLInputElement).value;
+    searchQuery.value = val;
+
+    if (isShopPage.value) {
+        setSearch(val);
+    }
+
+    if (debounceTimeout) clearTimeout(debounceTimeout);
+
+    if (val.trim().length < 2) {
+        suggestions.value = { categories: [], products: [] };
+        showDropdown.value = false;
         return;
     }
 
-    setSearch((event.target as HTMLInputElement).value);
+    debounceTimeout = setTimeout(async () => {
+        isLoading.value = true;
+        try {
+            const res = await fetch(
+                `/api/search-suggestions?q=${encodeURIComponent(val)}`,
+            );
+            if (res.ok) {
+                suggestions.value = await res.json();
+                showDropdown.value = true;
+            }
+        } catch (e) {
+            console.error('Mobile search suggestion error:', e);
+        } finally {
+            isLoading.value = false;
+        }
+    }, 300);
+}
+
+// এন্টার বা সাবমিট চাপলে শপ পেজে রিডাইরেক্ট
+function submitSearch(): void {
+    if (!searchQuery.value.trim()) return;
+    showDropdown.value = false;
+    closeMobileMenu();
+    router.get(shop.index(), { search: searchQuery.value.trim() });
+}
+
+// ড্রপডাউন আইটেমে ক্লিক করলে ড্রয়ার বন্ধ করা
+function handleItemClick(): void {
+    showDropdown.value = false;
+    closeMobileMenu();
 }
 </script>
 
 <template>
     <div>
-        <!-- ব্যাকড্রপ ওভারলে: লাইট থিমের সাথে মিলিয়ে সফট ডার্কনেস (bg-black/25) -->
+        <!-- ব্যাকড্রপ ওভারলে -->
         <div
             class="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm transition-opacity duration-300 lg:hidden"
             :class="isMobileMenuOpen ? 'block opacity-100' : 'hidden opacity-0'"
@@ -40,7 +110,7 @@ function handleSearchInput(event: Event): void {
             @click="closeMobileMenu"
         />
 
-        <!-- মোবাইল ড্রয়ার: হেডারের মতো প্রফেশনাল #FFF5ED ব্যাকগ্রাউন্ড দেওয়া হয়েছে -->
+        <!-- মোবাইল ড্রয়ার -->
         <aside
             id="mobileDrawer"
             class="fixed inset-y-0 left-0 z-50 w-80 max-w-[85%] border-r border-gray-200/60 bg-[#FFF5ED] shadow-2xl transition-transform duration-300 ease-in-out lg:hidden"
@@ -82,36 +152,119 @@ function handleSearchInput(event: Event): void {
 
             <!-- বডি / নেভিগেশন লিংকসমূহ -->
             <div class="h-[calc(100vh-4rem)] overflow-y-auto p-5">
-                <!-- সার্চ বক্স: ক্লিন হোয়াইট ইনপুট এবং লাইম গ্রিন ফোকাস বর্ডার -->
-                <label for="searchMobile" class="sr-only"
-                    >Search products</label
-                >
+                <!-- মোবাইল সার্চ বক্স এবং লাইভ সাজেশন ড্রপডাউন -->
                 <div class="relative mb-6">
-                    <span
-                        class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-[#737373]"
-                    >
-                        <svg
-                            class="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                    <form @submit.prevent="submitSearch">
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-[#737373]"
+                            >
+                                <svg
+                                    class="h-4 w-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                                    />
+                                </svg>
+                            </span>
+                            <input
+                                id="searchMobile"
+                                type="search"
+                                :value="
+                                    searchQuery || (isShopPage ? search : '')
+                                "
+                                placeholder="Search products..."
+                                class="w-full rounded-lg border border-gray-300 bg-white/80 py-2.5 pr-4 pl-10 text-sm text-gray-900 placeholder-gray-400 transition-all focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
+                                autocomplete="off"
+                                @input="handleSearchInput"
+                                @focus="showDropdown = true"
+                                @keydown.enter="submitSearch"
                             />
-                        </svg>
-                    </span>
-                    <input
-                        id="searchMobile"
-                        type="search"
-                        :value="isShopPage ? search : ''"
-                        placeholder="Search products..."
-                        class="w-full rounded-lg border border-gray-300 bg-white/80 py-2.5 pr-4 pl-10 text-sm text-gray-900 placeholder-gray-400 transition-all focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
-                        @input="handleSearchInput"
-                    />
+                        </div>
+                    </form>
+
+                    <!-- ড্রপডাউন ফলাফল (Mobile) -->
+                    <div
+                        v-if="
+                            showDropdown &&
+                            (suggestions.categories.length > 0 ||
+                                suggestions.products.length > 0 ||
+                                isLoading)
+                        "
+                        class="absolute top-full right-0 left-0 z-50 mt-2 max-h-80 overflow-y-auto rounded-xl border border-gray-100 bg-white p-2 shadow-2xl"
+                    >
+                        <div
+                            v-if="isLoading"
+                            class="p-3 text-center text-xs text-gray-500"
+                        >
+                            Searching...
+                        </div>
+
+                        <template v-else>
+                            <!-- Category Suggestions -->
+                            <div
+                                v-if="suggestions.categories.length > 0"
+                                class="mb-2"
+                            >
+                                <div
+                                    class="px-3 py-1 text-[10px] font-bold tracking-wider text-gray-400 uppercase"
+                                >
+                                    Categories
+                                </div>
+                                <Link
+                                    v-for="cat in suggestions.categories"
+                                    :key="cat.slug"
+                                    :href="cat.url"
+                                    class="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                                    @click="handleItemClick"
+                                >
+                                    <span>{{ cat.name }}</span>
+                                    <span class="text-[10px] text-gray-400"
+                                        >Category</span
+                                    >
+                                </Link>
+                            </div>
+
+                            <!-- Product Suggestions -->
+                            <div v-if="suggestions.products.length > 0">
+                                <div
+                                    class="px-3 py-1 text-[10px] font-bold tracking-wider text-gray-400 uppercase"
+                                >
+                                    Products
+                                </div>
+                                <Link
+                                    v-for="prod in suggestions.products"
+                                    :key="prod.id"
+                                    :href="prod.url"
+                                    class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                                    @click="handleItemClick"
+                                >
+                                    <img
+                                        v-if="prod.img"
+                                        :src="prod.img"
+                                        :alt="prod.name"
+                                        class="h-8 w-8 rounded-md object-cover"
+                                    />
+                                    <div class="flex-1 overflow-hidden">
+                                        <div
+                                            class="truncate font-medium text-gray-900"
+                                        >
+                                            {{ prod.name }}
+                                        </div>
+                                        <div class="text-[10px] text-gray-500">
+                                            ৳ {{ prod.price }}
+                                        </div>
+                                    </div>
+                                </Link>
+                            </div>
+                        </template>
+                    </div>
                 </div>
 
                 <!-- মেনু লিংকস গ্রুপ -->
@@ -124,7 +277,6 @@ function handleSearchInput(event: Event): void {
                         Home
                     </Link>
 
-                    <!-- অ্যাক্টিভ পেজে লাইম গ্রিন (#87E64B) ব্যাকগ্রাউন্ড ও ডার্ক টেক্সট দেওয়া হয়েছে -->
                     <Link
                         :href="shop.index()"
                         class="rounded-lg px-4 py-3 text-sm font-semibold transition-all"

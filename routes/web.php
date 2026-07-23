@@ -14,11 +14,16 @@ use App\Http\Controllers\Storefront\SslcommerzCallbackController;
 use App\Http\Controllers\Storefront\StripeCallbackController;
 use App\Http\Controllers\Storefront\StripeWebhookController;
 use App\Http\Controllers\Storefront\WishlistController;
+use App\Http\Controllers\Storefront\Api\SearchSuggestionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', HomeController::class)->name('home');
 Route::get('/shop', ShopController::class)->name('shop.index');
 Route::get('/products/{slug}', [ProductController::class, 'show'])->name('shop.products.show');
+
+// Search
+Route::get('/api/search-suggestions', SearchSuggestionController::class)
+    ->name('api.search-suggestions');
 
 // Cart
 Route::get('/cart', [CartController::class, 'index'])->name('shop.cart');

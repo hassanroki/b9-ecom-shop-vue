@@ -240,12 +240,12 @@ const year = computed(() => new Date().getFullYear());
                         >We accept</span
                     >
                     <span
-                        class="rounded border border-black/5 bg-black/[0.03] px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
+                        class="rounded border border-black/5 bg-black/3 px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
                     >
                         COD
                     </span>
                     <span
-                        class="rounded border border-black/5 bg-black/[0.03] px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
+                        class="rounded border border-black/5 bg-black/3 px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
                     >
                         SSLCommerz
                     </span>
