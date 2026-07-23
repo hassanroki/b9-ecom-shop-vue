@@ -18,6 +18,11 @@ const expanded = ref(false);
 function toggleExpand(): void {
     expanded.value = !expanded.value;
 }
+
+function resolveImg(path: string | null | undefined): string | null {
+    if (!path) return null;
+    return path.startsWith('http') ? path : `/storage/${path}`;
+}
 </script>
 
 <template>
@@ -139,14 +144,10 @@ function toggleExpand(): void {
                             class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-100 bg-gray-50"
                         >
                             <img
-                                v-if="
-                                    item.product &&
-                                    item.product.images &&
-                                    item.product.images[0]
-                                "
-                                :src="`https://images.unsplash.com/${item.product.images[0].image_path}?auto=format&fit=crop&w=120&q=70`"
+                                v-if="item.img"
+                                :src="item.img"
                                 :alt="item.product_name"
-                                class="h-full w-full object-cover"
+                                class="h-full w-full object-cover" loading="lazy"
                             />
                             <svg
                                 v-else

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Product;
 use App\Models\Wishlist;
+use App\Support\ImageUrl;
 use Illuminate\Support\Facades\Auth;
 
 class WishlistService
@@ -155,7 +156,7 @@ class WishlistService
             'oldPrice' => $product->compare_at_price !== null
                 ? (float) $product->compare_at_price
                 : null,
-            'img' => $primaryImage?->image_path ?? '',
+            'img' => ImageUrl::resolve($primaryImage?->image_path) ?? '',
             'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
             'reviews' => (int) $product->reviews_count,
             'inStock' => $product->stock_status === 'in_stock',

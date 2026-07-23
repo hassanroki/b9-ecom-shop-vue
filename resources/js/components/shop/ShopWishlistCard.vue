@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import ShopStarRating from '@/components/shop/ShopStarRating.vue';
 import { formatTaka } from '@/lib/shop/currency';
 import { productShowUrl } from '@/lib/shop/product';
@@ -14,7 +15,8 @@ const emit = defineEmits<{
     addToCart: [productId: number];
 }>();
 
-const imgUrl = `https://images.unsplash.com/${item.img}?auto=format&fit=crop&w=600&q=70`;
+const FALLBACK_IMG = '/images/product-placeholder.png';
+const imgUrl = computed(() => item.img || FALLBACK_IMG);
 </script>
 
 <template>

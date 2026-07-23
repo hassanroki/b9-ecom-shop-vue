@@ -60,7 +60,7 @@ defineProps<{
                             class="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-110"
                         />
                         <div
-                            class="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/45 via-black/5 to-transparent p-2 opacity-0 transition duration-300 group-hover:opacity-100"
+                            class="pointer-events-none absolute inset-0 flex items-end justify-end bg-liniear-to-t from-black/45 via-black/5 to-transparent p-2 opacity-0 transition duration-300 group-hover:opacity-100"
                         >
                             <span
                                 class="inline-flex h-8 w-8 translate-y-1 items-center justify-center rounded-full bg-white text-shop-primary-600 shadow transition duration-300 group-hover:translate-y-0"

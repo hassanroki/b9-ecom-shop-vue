@@ -343,7 +343,7 @@ function breakdownPercent(count: number, total: number): number {
                     </Button>
                 </CardHeader>
                 <CardContent class="overflow-x-auto">
-                    <table class="w-full min-w-[520px] text-sm">
+                    <table class="w-full min-w-130 text-sm">
                         <thead>
                             <tr
                                 class="border-b text-left text-muted-foreground"

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Support\ImageUrl;
 use Illuminate\Support\Facades\Auth;
 
 class CartService
@@ -127,7 +128,7 @@ class CartService
                 'name' => $item->product->name,
                 'slug' => $item->product->slug,
                 'price' => (float) $item->product->price,
-                'img' => $item->product->images->first()?->image_path ?? '',
+                'img' => ImageUrl::resolve($item->product->images->first()?->image_path) ?? '',
                 'qty' => $item->quantity,
                 'inStock' => $item->product->stock_status === 'in_stock',
             ])
