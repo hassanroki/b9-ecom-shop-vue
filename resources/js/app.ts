@@ -16,6 +16,8 @@ createInertiaApp({
                 return null;
             case name.startsWith('shop/'):
                 return ShopLayout;
+            case name.startsWith('customer/'):
+                return null; // এই পেজগুলো নিজেই <ShopLayout> ব্যবহার করে
             case name.startsWith('auth/'):
                 return AuthLayout;
             case name.startsWith('settings/'):

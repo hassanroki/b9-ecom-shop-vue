@@ -6,8 +6,9 @@ import { useShopCart } from '@/composables/shop/useShopCart';
 import { useShopCatalog } from '@/composables/shop/useShopCatalog';
 import { useShopUi } from '@/composables/shop/useShopUi';
 import { useShopWishlist } from '@/composables/shop/useShopWishlist';
-import { home } from '@/routes';
+import { home, login } from '@/routes';
 import shop from '@/routes/shop';
+import customer from '@/routes/customer';
 
 const page = usePage();
 const { openMobileMenu } = useShopUi();
@@ -21,6 +22,14 @@ const isCartPage = computed(() => page.component === 'shop/Cart');
 const isWishlistPage = computed(() => page.component === 'shop/Wishlist');
 const isCheckoutPage = computed(() => page.component === 'shop/Checkout');
 const showMobileSearch = ref(false);
+
+// লগিন স্ট্যাটাস চেক
+const isAuthenticated = computed(() => !!page.props.auth?.user);
+
+// Account link href: লগিন থাকলে dashboard, না থাকলে login পেজ
+const accountHref = computed(() =>
+    isAuthenticated.value ? customer.dashboard() : login(),
+);
 
 function toggleMobileSearch(): void {
     showMobileSearch.value = !showMobileSearch.value;
@@ -81,7 +90,7 @@ function handleSearchInput(event: Event): void {
                         Home
                         <!-- Active / Hover Animation Line -->
                         <span
-                            class="absolute bottom-0 left-0 h-[3px] bg-[#87E64B] transition-all duration-300"
+                            class="absolute bottom-0 left-0 h-0.75 bg-[#87E64B] transition-all duration-300"
                             :class="
                                 isHomePage ? 'w-full' : 'w-0 group-hover:w-full'
                             "
@@ -95,7 +104,7 @@ function handleSearchInput(event: Event): void {
                     >
                         Shop
                         <span
-                            class="absolute bottom-0 left-0 h-[3px] bg-[#87E64B] transition-all duration-300"
+                            class="absolute bottom-0 left-0 h-0.75 bg-[#87E64B] transition-all duration-300"
                             :class="
                                 isShopPage ? 'w-full' : 'w-0 group-hover:w-full'
                             "
@@ -108,7 +117,7 @@ function handleSearchInput(event: Event): void {
                     >
                         Categories
                         <span
-                            class="absolute bottom-0 left-0 h-[3px] w-0 bg-[#87E64B] transition-all duration-300 group-hover:w-full"
+                            class="absolute bottom-0 left-0 h-0.75 w-0 bg-[#87E64B] transition-all duration-300 group-hover:w-full"
                         ></span>
                     </Link>
 
@@ -118,7 +127,7 @@ function handleSearchInput(event: Event): void {
                     >
                         Best Selling
                         <span
-                            class="absolute bottom-0 left-0 h-[3px] w-0 bg-[#87E64B] transition-all duration-300 group-hover:w-full"
+                            class="absolute bottom-0 left-0 h-0.75 w-0 bg-[#87E64B] transition-all duration-300 group-hover:w-full"
                         ></span>
                     </Link>
                 </nav>
@@ -179,7 +188,7 @@ function handleSearchInput(event: Event): void {
                     </button>
 
                     <Link
-                        href="#"
+                        :href="accountHref"
                         aria-label="Account"
                         class="hidden h-11 w-11 items-center justify-center rounded-lg text-[#737373] hover:bg-black/5 focus:ring-2 focus:ring-[#87E64B] focus:outline-none sm:inline-flex"
                     >
@@ -222,7 +231,7 @@ function handleSearchInput(event: Event): void {
                             />
                         </svg>
                         <span
-                            class="absolute -top-0.5 -right-0.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-shop-accent-500 px-1 text-xs font-semibold text-white"
+                            class="absolute -top-0.5 -right-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-shop-accent-500 px-1 text-xs font-semibold text-white"
                         >
                             {{ wishCount }}
                         </span>
@@ -251,7 +260,7 @@ function handleSearchInput(event: Event): void {
                             />
                         </svg>
                         <span
-                            class="absolute -top-0.5 -right-0.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-shop-accent-500 px-1 text-xs font-semibold text-white"
+                            class="absolute -top-0.5 -right-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-shop-accent-500 px-1 text-xs font-semibold text-white"
                         >
                             {{ cartQty }}
                         </span>

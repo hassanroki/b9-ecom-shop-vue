@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\Storefront\CartController;
 use App\Http\Controllers\Storefront\CheckoutController;
 use App\Http\Controllers\Storefront\HomeController;
@@ -58,8 +59,22 @@ Route::post('/payments/stripe/webhook', [StripeWebhookController::class, 'handle
     ->name('shop.payments.stripe.webhook')
     ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
 
+use App\Http\Controllers\DashboardRedirectController;
+use App\Http\Controllers\Customer\DashboardController as CustomerDashboardController;
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('dashboard', DashboardRedirectController::class)->name('dashboard');
+});
+
 Route::middleware(['auth', 'verified', 'admin'])->group(function () {
-    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
+});
+
+Route::middleware(['auth'])->prefix('customer')->name('customer.')->group(function () {
+    Route::get('/dashboard', [CustomerDashboardController::class, 'index'])->name('dashboard');
+
+    Route::get('/profile/edit', [CustomerProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [CustomerProfileController::class, 'update'])->name('profile.update');
 });
 
 require __DIR__ . '/settings.php';

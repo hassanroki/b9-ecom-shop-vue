@@ -3,14 +3,23 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { useShopCatalog } from '@/composables/shop/useShopCatalog';
 import { useShopUi } from '@/composables/shop/useShopUi';
-import { home } from '@/routes';
+import { home, login } from '@/routes';
 import shop from '@/routes/shop';
+import customer from '@/routes/customer';
 
 const page = usePage();
 const { isMobileMenuOpen, closeMobileMenu } = useShopUi();
 const { search, setSearch } = useShopCatalog();
 
 const isShopPage = computed(() => page.component === 'shop/Shop');
+
+// লগিন স্ট্যাটাস চেক
+const isAuthenticated = computed(() => !!page.props.auth?.user);
+
+// My Account link href: লগিন থাকলে dashboard, না থাকলে login পেজ
+const accountHref = computed(() =>
+    isAuthenticated.value ? customer.dashboard() : login()
+);
 
 function handleSearchInput(event: Event): void {
     if (!isShopPage.value) {
@@ -23,7 +32,7 @@ function handleSearchInput(event: Event): void {
 
 <template>
     <div>
-        <!-- ব্যাকড্রপ ওভারলে: লাইট থিমের সাথে মিলিয়ে সফট ডার্কনেস (bg-black/25) -->
+        <!-- ব্যাকড্রপ ওভারলে: লাইট থিমের সাথে মিলিয়ে সফট ডার্কনেস (bg-black/25) -->
         <div
             class="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm transition-opacity duration-300 lg:hidden"
             :class="isMobileMenuOpen ? 'block opacity-100' : 'hidden opacity-0'"
@@ -31,7 +40,7 @@ function handleSearchInput(event: Event): void {
             @click="closeMobileMenu"
         />
 
-        <!-- মোবাইল ড্রয়ার: হেডারের মতো প্রফেশনাল #FFF5ED ব্যাকগ্রাউন্ড দেওয়া হয়েছে -->
+        <!-- মোবাইল ড্রয়ার: হেডারের মতো প্রফেশনাল #FFF5ED ব্যাকগ্রাউন্ড দেওয়া হয়েছে -->
         <aside
             id="mobileDrawer"
             class="fixed inset-y-0 left-0 z-50 w-80 max-w-[85%] border-r border-gray-200/60 bg-[#FFF5ED] shadow-2xl transition-transform duration-300 ease-in-out lg:hidden"
@@ -73,7 +82,7 @@ function handleSearchInput(event: Event): void {
 
             <!-- বডি / নেভিগেশন লিংকসমূহ -->
             <div class="h-[calc(100vh-4rem)] overflow-y-auto p-5">
-                <!-- সার্চ বক্স: ক্লিন হোয়াইট ইনপুট এবং লাইম গ্রিন ফোকাস বর্ডার -->
+                <!-- সার্চ বক্স: ক্লিন হোয়াইট ইনপুট এবং লাইম গ্রিন ফোকাস বর্ডার -->
                 <label for="searchMobile" class="sr-only"
                     >Search products</label
                 >
@@ -115,7 +124,7 @@ function handleSearchInput(event: Event): void {
                         Home
                     </Link>
 
-                    <!-- অ্যাক্টিভ পেজে লাইম গ্রিন (#87E64B) ব্যাকগ্রাউন্ড ও ডার্ক টেক্সট দেওয়া হয়েছে -->
+                    <!-- অ্যাক্টিভ পেজে লাইম গ্রিন (#87E64B) ব্যাকগ্রাউন্ড ও ডার্ক টেক্সট দেওয়া হয়েছে -->
                     <Link
                         :href="shop.index()"
                         class="rounded-lg px-4 py-3 text-sm font-semibold transition-all"
@@ -157,7 +166,7 @@ function handleSearchInput(event: Event): void {
                     <div class="my-4 border-t border-gray-200/60" />
 
                     <Link
-                        href="#"
+                        :href="accountHref"
                         class="flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-[#737373] transition-all hover:bg-black/5 hover:text-[#B9B9B9]"
                         @click="closeMobileMenu"
                     >
