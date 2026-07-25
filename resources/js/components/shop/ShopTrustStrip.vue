@@ -1,18 +1,22 @@
 <template>
     <section
-        class="border-b border-gray-200 bg-white"
+        class="border-b border-gray-100 bg-[#FFF5ED]/30 py-6 lg:py-10"
         aria-label="Why shop with us"
     >
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <!-- মোবাইলে ২ কলাম (grid-cols-2) এবং মাঝারি বা বড় স্ক্রিনে ৪ কলাম (md:grid-cols-4) করা হয়েছে -->
             <div
-                class="grid grid-cols-2 gap-4 py-6 md:grid-cols-4 md:gap-6"
+                class="grid grid-cols-2 gap-x-3 gap-y-5 sm:gap-6 md:grid-cols-4 md:gap-8"
             >
-                <div class="flex items-center gap-3">
+                <!-- ফিচার ১: ডেলিভারি -->
+                <div
+                    class="group flex flex-col items-start gap-2.5 rounded-xl p-2 transition-all duration-300 hover:bg-white hover:shadow-sm sm:flex-row sm:gap-4 sm:p-3"
+                >
                     <span
-                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-shop-primary-50 text-shop-primary-600"
+                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#87E64B]/10 text-gray-800 transition-colors group-hover:bg-[#87E64B] sm:h-12 sm:w-12"
                     >
                         <svg
-                            class="h-5 w-5"
+                            class="h-5 w-5 transition-transform duration-300 group-hover:scale-110 sm:h-6 sm:w-6"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -25,21 +29,29 @@
                             />
                         </svg>
                     </span>
-                    <div>
-                        <p class="text-sm font-semibold text-gray-900">
+                    <div class="space-y-0.5">
+                        <h3
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                        >
                             Nationwide Delivery
-                        </p>
-                        <p class="text-xs text-gray-500">
+                        </h3>
+                        <p
+                            class="text-[11px] font-medium text-[#737373] sm:text-xs"
+                        >
                             Inside &amp; outside Dhaka
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
+
+                <!-- ফিচার ২: ক্যাশ অন ডেলিভারি -->
+                <div
+                    class="group flex flex-col items-start gap-2.5 rounded-xl p-2 transition-all duration-300 hover:bg-white hover:shadow-sm sm:flex-row sm:gap-4 sm:p-3"
+                >
                     <span
-                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-shop-primary-50 text-shop-primary-600"
+                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#87E64B]/10 text-gray-800 transition-colors group-hover:bg-[#87E64B] sm:h-12 sm:w-12"
                     >
                         <svg
-                            class="h-5 w-5"
+                            class="h-5 w-5 transition-transform duration-300 group-hover:scale-110 sm:h-6 sm:w-6"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -52,21 +64,29 @@
                             />
                         </svg>
                     </span>
-                    <div>
-                        <p class="text-sm font-semibold text-gray-900">
+                    <div class="space-y-0.5">
+                        <h3
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                        >
                             Cash on Delivery
-                        </p>
-                        <p class="text-xs text-gray-500">
+                        </h3>
+                        <p
+                            class="text-[11px] font-medium text-[#737373] sm:text-xs"
+                        >
                             Pay when you receive
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
+
+                <!-- ফিচার ৩: সিকিউর পেমেন্ট -->
+                <div
+                    class="group flex flex-col items-start gap-2.5 rounded-xl p-2 transition-all duration-300 hover:bg-white hover:shadow-sm sm:flex-row sm:gap-4 sm:p-3"
+                >
                     <span
-                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-shop-primary-50 text-shop-primary-600"
+                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#87E64B]/10 text-gray-800 transition-colors group-hover:bg-[#87E64B] sm:h-12 sm:w-12"
                     >
                         <svg
-                            class="h-5 w-5"
+                            class="h-5 w-5 transition-transform duration-300 group-hover:scale-110 sm:h-6 sm:w-6"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -79,21 +99,29 @@
                             />
                         </svg>
                     </span>
-                    <div>
-                        <p class="text-sm font-semibold text-gray-900">
+                    <div class="space-y-0.5">
+                        <h3
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                        >
                             Secure Payment
-                        </p>
-                        <p class="text-xs text-gray-500">
+                        </h3>
+                        <p
+                            class="text-[11px] font-medium text-[#737373] sm:text-xs"
+                        >
                             SSLCommerz protected
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
+
+                <!-- ফিচার ৪: জেনুইন প্রোডাক্ট -->
+                <div
+                    class="group flex flex-col items-start gap-2.5 rounded-xl p-2 transition-all duration-300 hover:bg-white hover:shadow-sm sm:flex-row sm:gap-4 sm:p-3"
+                >
                     <span
-                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-shop-primary-50 text-shop-primary-600"
+                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#87E64B]/10 text-gray-800 transition-colors group-hover:bg-[#87E64B] sm:h-12 sm:w-12"
                     >
                         <svg
-                            class="h-5 w-5"
+                            class="h-5 w-5 transition-transform duration-300 group-hover:scale-110 sm:h-6 sm:w-6"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -106,11 +134,15 @@
                             />
                         </svg>
                     </span>
-                    <div>
-                        <p class="text-sm font-semibold text-gray-900">
+                    <div class="space-y-0.5">
+                        <h3
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                        >
                             Genuine Products
-                        </p>
-                        <p class="text-xs text-gray-500">
+                        </h3>
+                        <p
+                            class="text-[11px] font-medium text-[#737373] sm:text-xs"
+                        >
                             Quality guaranteed
                         </p>
                     </div>

@@ -33,7 +33,7 @@ return new class extends Migration
             $table->decimal('subtotal', 12, 2);
             $table->decimal('delivery_charge', 10, 2)->default(0);
             $table->decimal('total', 12, 2);
-            $table->enum('payment_method', ['cod', 'sslcommerz']);
+            $table->enum('payment_method', ['cod', 'sslcommerz', 'stripe']);
             $table->enum('payment_status', ['pending', 'paid', 'failed', 'cancelled'])->default('pending')->index();
             $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])->default('pending')->index();
             $table->timestamp('placed_at')->nullable();

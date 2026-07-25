@@ -9,21 +9,25 @@ const year = computed(() => new Date().getFullYear());
 </script>
 
 <template>
-    <footer class="bg-gray-900 text-gray-300">
+    <footer class="border-t border-gray-200/60 bg-[#FFF5ED] text-[#525252]">
         <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8">
-            <div class="grid grid-cols-1 gap-8 md:grid-cols-4">
-                <div>
-                    <ShopLogo variant="dark" />
-                    <p class="mt-4 text-sm leading-relaxed text-gray-400">
+            <div class="grid grid-cols-1 gap-10 md:grid-cols-4">
+                <!-- ব্র্যান্ড স্টোরি ও সোশ্যালস -->
+                <div class="space-y-5">
+                    <!-- এখানে variant="light" বা ডিফল্ট লোগো ব্যবহার করতে পারেন যা লাইট ব্যাকগ্রাউন্ডে ভালো দেখায় -->
+                    <ShopLogo variant="light" />
+                    <p
+                        class="max-w-sm text-xs leading-relaxed font-medium text-[#737373]"
+                    >
                         Quality products delivered across Bangladesh. Shop with
                         confidence — Cash on Delivery and secure online payment
                         available.
                     </p>
-                    <div class="mt-4 flex gap-3">
+                    <div class="flex gap-2 pt-2">
                         <a
                             href="#"
                             aria-label="Facebook"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition hover:bg-shop-primary-600"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/5 text-gray-600 transition-colors hover:bg-[#87E64B] hover:text-black"
                         >
                             <svg
                                 class="h-4 w-4"
@@ -38,7 +42,7 @@ const year = computed(() => new Date().getFullYear());
                         <a
                             href="#"
                             aria-label="Instagram"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition hover:bg-shop-primary-600"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/5 text-gray-600 transition-colors hover:bg-[#87E64B] hover:text-black"
                         >
                             <svg
                                 class="h-4 w-4"
@@ -53,7 +57,7 @@ const year = computed(() => new Date().getFullYear());
                         <a
                             href="#"
                             aria-label="YouTube"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition hover:bg-shop-primary-600"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/5 text-gray-600 transition-colors hover:bg-[#87E64B] hover:text-black"
                         >
                             <svg
                                 class="h-4 w-4"
@@ -68,92 +72,97 @@ const year = computed(() => new Date().getFullYear());
                     </div>
                 </div>
 
+                <!-- কুইক লিংকস -->
                 <div>
                     <h3
-                        class="text-sm font-semibold tracking-wide text-white uppercase"
+                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
                     >
                         Quick Links
                     </h3>
-                    <ul class="mt-4 space-y-2 text-sm">
+                    <ul class="mt-4 space-y-2.5 text-xs font-semibold">
                         <li>
                             <Link
                                 :href="home()"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >Home</Link
                             >
                         </li>
                         <li>
                             <Link
                                 :href="shop.index()"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >Shop</Link
                             >
                         </li>
                         <li>
                             <a
                                 href="#bestselling"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >Best Selling</a
                             >
                         </li>
                         <li>
                             <a
                                 href="#newcollection"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >New Collection</a
                             >
                         </li>
                     </ul>
                 </div>
 
+                <!-- কাস্টমার সার্ভিস -->
                 <div>
                     <h3
-                        class="text-sm font-semibold tracking-wide text-white uppercase"
+                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
                     >
                         Customer Service
                     </h3>
-                    <ul class="mt-4 space-y-2 text-sm">
+                    <ul class="mt-4 space-y-2.5 text-xs font-semibold">
                         <li>
                             <a
                                 href="#"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >Track Your Order</a
                             >
                         </li>
                         <li>
                             <a
                                 href="#"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >Shipping &amp; Delivery</a
                             >
                         </li>
                         <li>
                             <a
                                 href="#"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >Returns &amp; Refunds</a
                             >
                         </li>
                         <li>
                             <a
                                 href="#"
-                                class="text-gray-400 transition hover:text-white"
+                                class="text-[#525252] transition-colors hover:text-[#87E64B]"
                                 >FAQ</a
                             >
                         </li>
                     </ul>
                 </div>
 
+                <!-- কন্টাক্ট ইনফো -->
                 <div>
                     <h3
-                        class="text-sm font-semibold tracking-wide text-white uppercase"
+                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
                     >
-                        Contact
+                        Contact Us
                     </h3>
-                    <ul class="mt-4 space-y-3 text-sm">
-                        <li class="flex items-start gap-2">
+                    <ul
+                        class="mt-4 space-y-3 text-xs font-semibold text-[#525252]"
+                    >
+                        <li class="flex items-start gap-2.5">
                             <svg
-                                class="mt-0.5 h-5 w-5 shrink-0 text-gray-400"
+                                class="mt-0.5 h-4 w-4 shrink-0 text-gray-400"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -170,13 +179,13 @@ const year = computed(() => new Date().getFullYear());
                                     d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                                 />
                             </svg>
-                            <span class="text-gray-400"
+                            <span class="leading-relaxed"
                                 >House 12, Road 5, Dhanmondi, Dhaka 1205</span
                             >
                         </li>
-                        <li class="flex items-center gap-2">
+                        <li class="flex items-center gap-2.5">
                             <svg
-                                class="h-5 w-5 shrink-0 text-gray-400"
+                                class="h-4 w-4 shrink-0 text-gray-400"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -190,13 +199,13 @@ const year = computed(() => new Date().getFullYear());
                             </svg>
                             <a
                                 href="tel:+8801700000000"
-                                class="text-gray-400 transition hover:text-white"
+                                class="transition-colors hover:text-[#87E64B]"
                                 >+880 1700-000000</a
                             >
                         </li>
-                        <li class="flex items-center gap-2">
+                        <li class="flex items-center gap-2.5">
                             <svg
-                                class="h-5 w-5 shrink-0 text-gray-400"
+                                class="h-4 w-4 shrink-0 text-gray-400"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -209,31 +218,42 @@ const year = computed(() => new Date().getFullYear());
                                 />
                             </svg>
                             <a
-                                href="mailto:support@shopease.com.bd"
-                                class="text-gray-400 transition hover:text-white"
-                                >support@shopease.com.bd</a
+                                href="mailto:support@shopbd.com.bd"
+                                class="transition-colors hover:text-[#87E64B]"
+                                >support@shopbd.com.bd</a
                             >
                         </li>
                     </ul>
                 </div>
             </div>
 
+            <!-- বটম বার (কপিরাইট ও পেমেন্ট ব্যাজ) -->
             <div
-                class="mt-10 flex flex-col items-center gap-4 border-t border-white/10 pt-6 sm:flex-row sm:justify-between"
+                class="mt-12 flex flex-col items-center gap-4 border-t border-gray-200/60 pt-6 sm:flex-row sm:justify-between"
             >
-                <p class="text-xs text-gray-400">
-                    © {{ year }} ShopEase. All rights reserved.
+                <p class="text-[11px] font-semibold text-[#737373]">
+                    © {{ year }} ShopBD. All rights reserved.
                 </p>
-                <div class="flex items-center gap-3">
-                    <span class="text-xs text-gray-400">We accept</span>
+                <div class="flex items-center gap-2">
                     <span
-                        class="rounded bg-white/10 px-2 py-1 text-xs font-medium text-gray-200"
-                        >Cash on Delivery</span
+                        class="mr-1 text-[11px] font-bold tracking-wider text-[#737373] uppercase"
+                        >We accept</span
                     >
                     <span
-                        class="rounded bg-white/10 px-2 py-1 text-xs font-medium text-gray-200"
-                        >SSLCommerz</span
+                        class="rounded border border-black/5 bg-black/[0.03] px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
                     >
+                        COD
+                    </span>
+                    <span
+                        class="rounded border border-black/5 bg-black/[0.03] px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-700 uppercase"
+                    >
+                        SSLCommerz
+                    </span>
+                    <span
+                        class="rounded border border-[#635BFF]/20 bg-[#635BFF]/5 px-2.5 py-1 text-[10px] font-bold tracking-wider text-[#635BFF] uppercase"
+                    >
+                        Stripe
+                    </span>
                 </div>
             </div>
         </div>

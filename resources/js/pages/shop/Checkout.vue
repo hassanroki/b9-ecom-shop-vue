@@ -8,17 +8,18 @@ import { useShopUi } from '@/composables/shop/useShopUi';
 import type { ShopCheckoutConfig } from '@/types/shop';
 import shop from '@/routes/shop';
 
-type PaymentMethod = 'cod' | 'sslcommerz';
+type PaymentMethod = 'cod' | 'sslcommerz' | 'stripe';
 
 type AppliedCoupon = {
     code: string;
     discount: number;
 };
 
-const { districts, deliveryCharges, appliedCoupon } = defineProps<{
+const { districts, deliveryCharges, appliedCoupon, stripeExchangeRate = 0.0084 } = defineProps<{
     districts: string[];
     deliveryCharges: ShopCheckoutConfig;
     appliedCoupon?: AppliedCoupon | null;
+    stripeExchangeRate?: number;
 }>();
 
 const { cart, cartSubtotal, updateQty, removeItem } = useShopCart();
@@ -75,9 +76,11 @@ const grandTotal = computed(() =>
     ),
 );
 
-const submitLabel = computed(() =>
-    form.payment_method === 'sslcommerz' ? 'Proceed to Payment' : 'Place Order',
-);
+const submitLabel = computed(() => {
+    if (form.payment_method === 'sslcommerz') return 'Proceed to Payment';
+    if (form.payment_method === 'stripe') return 'Pay with Stripe';
+    return 'Place Order';
+});
 
 function handleIncrement(productId: number): void {
     const item = cart.value.find((i) => i.productId === productId);
@@ -598,6 +601,52 @@ function handleSubmit(): void {
                                     </p>
                                 </div>
                             </label>
+
+                            <!-- ===== Stripe ===== -->
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'stripe'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="stripe"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <!-- Stripe card icon -->
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-[#635BFF]"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6Zm2 0v2h16V6H4Zm0 4v2h4v-2H4Zm0 4v2h4v-2H4Zm6-4v2h2v-2h-2Zm4 0v2h2v-2h-2Zm-4 4v2h2v-2h-2Zm4 0v2h4v-2h-4Z" />
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-semibold text-gray-900">
+                                        Pay with Stripe
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay securely with Visa, Mastercard, or
+                                        any major credit / debit card via Stripe.
+                                    </p>
+                                    <div
+                                        v-if="form.payment_method === 'stripe'"
+                                        class="mt-2 text-xs font-semibold text-[#635BFF] bg-[#635BFF]/5 border border-[#635BFF]/10 rounded-lg px-2.5 py-1.5 inline-flex items-center gap-1.5 transition-all duration-300"
+                                    >
+                                        <span class="relative flex h-2 w-2">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#635BFF] opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-2 w-2 bg-[#635BFF]"></span>
+                                        </span>
+                                        Amount to pay is approx. ${{ (grandTotal * stripeExchangeRate).toFixed(2) }} USD (BDT {{ grandTotal.toLocaleString() }})
+                                    </div>
+                                </div>
+                            </label>
                         </div>
 
                         <p
@@ -622,6 +671,8 @@ function handleSubmit(): void {
                             :is-empty="cart.length === 0"
                             :processing="form.processing"
                             :submit-label="submitLabel"
+                            :payment-method="form.payment_method"
+                            :stripe-exchange-rate="stripeExchangeRate"
                             @increment="handleIncrement"
                             @decrement="handleDecrement"
                             @remove="handleRemove"

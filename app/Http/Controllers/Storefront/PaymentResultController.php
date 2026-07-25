@@ -59,8 +59,12 @@ class PaymentResultController extends Controller
 
         return [
             'orderNumber' => $order->order_number,
-            'total' => (float) $order->total,
-            'paymentLabel' => 'SSLCommerz',
+            'total'       => (float) $order->total,
+            'paymentLabel' => match ($order->payment_method) {
+                'stripe'     => 'Stripe',
+                'sslcommerz' => 'SSLCommerz',
+                default      => 'Cash on Delivery',
+            },
         ];
     }
 }
