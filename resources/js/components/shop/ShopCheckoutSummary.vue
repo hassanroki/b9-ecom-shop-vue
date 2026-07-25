@@ -8,6 +8,8 @@ const {
     subtotal,
     deliveryCharge,
     deliveryNote,
+    discount = 0,
+    couponCode = null,
     isEmpty,
     processing = false,
     submitLabel = 'Place Order',
@@ -16,6 +18,8 @@ const {
     subtotal: number;
     deliveryCharge: number;
     deliveryNote: string;
+    discount?: number;
+    couponCode?: string | null;
     isEmpty: boolean;
     processing?: boolean;
     submitLabel?: string;
@@ -33,7 +37,9 @@ const itemCount = computed(() =>
     items.reduce((sum, item) => sum + item.qty, 0),
 );
 
-const grandTotal = computed(() => subtotal + deliveryCharge);
+const grandTotal = computed(
+    () => Math.max(subtotal + deliveryCharge - (discount ?? 0), 0),
+);
 
 function toggleSummary(): void {
     if (window.innerWidth >= 1024) {
@@ -210,6 +216,10 @@ function toggleSummary(): void {
                     <span class="font-medium text-gray-900">{{
                         formatTaka(deliveryCharge)
                     }}</span>
+                </div>
+                <div v-if="discount" class="flex justify-between text-sm text-green-600">
+                    <span>Coupon Discount</span>
+                    <span class="font-medium">-{{ formatTaka(discount) }}</span>
                 </div>
                 <div
                     class="mt-2 flex justify-between border-t border-gray-100 pt-3 text-base"

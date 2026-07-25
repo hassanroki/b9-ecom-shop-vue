@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import ShopCheckoutSummary from '@/components/shop/ShopCheckoutSummary.vue';
 import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
 import { useShopCart } from '@/composables/shop/useShopCart';
@@ -10,9 +10,15 @@ import shop from '@/routes/shop';
 
 type PaymentMethod = 'cod' | 'sslcommerz';
 
-const { districts, deliveryCharges } = defineProps<{
+type AppliedCoupon = {
+    code: string;
+    discount: number;
+};
+
+const { districts, deliveryCharges, appliedCoupon } = defineProps<{
     districts: string[];
     deliveryCharges: ShopCheckoutConfig;
+    appliedCoupon?: AppliedCoupon | null;
 }>();
 
 const { cart, cartSubtotal, updateQty, removeItem } = useShopCart();
@@ -27,7 +33,14 @@ const form = useForm({
     address: '',
     notes: '',
     payment_method: 'cod' as PaymentMethod,
+    coupon_code: appliedCoupon?.code ?? '',
 });
+
+// --- Coupon state ---
+const couponInput = ref('');
+const coupon = ref<AppliedCoupon | null>(appliedCoupon ?? null);
+const couponError = ref('');
+const couponApplying = ref(false);
 
 const deliveryCharge = computed(() => {
     if (cart.value.length === 0) {
@@ -52,6 +65,15 @@ const deliveryNote = computed(() => {
         ? '(Inside Dhaka)'
         : '(Outside Dhaka)';
 });
+
+const couponDiscount = computed(() => coupon.value?.discount ?? 0);
+
+const grandTotal = computed(() =>
+    Math.max(
+        cartSubtotal.value + deliveryCharge.value - couponDiscount.value,
+        0,
+    ),
+);
 
 const submitLabel = computed(() =>
     form.payment_method === 'sslcommerz' ? 'Proceed to Payment' : 'Place Order',
@@ -79,6 +101,80 @@ function handleRemove(productId: number): void {
     }
 }
 
+async function applyCoupon(): Promise<void> {
+    const code = couponInput.value.trim();
+
+    if (!code) {
+        couponError.value = 'Please enter a coupon code.';
+        return;
+    }
+
+    couponApplying.value = true;
+    couponError.value = '';
+
+    try {
+        const response = await fetch(shop.checkout.coupon.apply.url(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN':
+                    document
+                        .querySelector('meta[name="csrf-token"]')
+                        ?.getAttribute('content') ?? '',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                code,
+                email: form.email || null,
+                phone: form.phone || null,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            couponError.value = data.message ?? 'Unable to apply this coupon.';
+            return;
+        }
+
+        coupon.value = {
+            code: data.code,
+            discount: data.discount,
+        };
+        form.coupon_code = data.code;
+        couponInput.value = '';
+        showToast(data.message ?? 'Coupon applied.');
+    } catch {
+        couponError.value = 'Something went wrong. Please try again.';
+    } finally {
+        couponApplying.value = false;
+    }
+}
+
+async function removeCoupon(): Promise<void> {
+    try {
+        await fetch(shop.checkout.coupon.remove.url(), {
+            method: 'DELETE',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN':
+                    document
+                        .querySelector('meta[name="csrf-token"]')
+                        ?.getAttribute('content') ?? '',
+            },
+            credentials: 'same-origin',
+        });
+    } finally {
+        coupon.value = null;
+        form.coupon_code = '';
+        couponError.value = '';
+        showToast('Coupon removed.');
+    }
+}
+
 function handleSubmit(): void {
     if (cart.value.length === 0) {
         showToast('Your cart is empty');
@@ -87,7 +183,11 @@ function handleSubmit(): void {
 
     form.post(shop.checkout.store.url(), {
         preserveScroll: true,
-        onError: () => {
+        onError: (errors) => {
+            if (errors.coupon_code) {
+                couponError.value = errors.coupon_code;
+                coupon.value = null;
+            }
             showToast('Please complete the highlighted fields');
         },
     });
@@ -349,6 +449,67 @@ function handleSubmit(): void {
                         class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
                     >
                         <h2 class="text-lg font-semibold text-gray-900">
+                            Coupon Code
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Have a discount code? Apply it below.
+                        </p>
+
+                        <div
+                            v-if="!coupon"
+                            class="mt-4 flex flex-col gap-2 sm:flex-row"
+                        >
+                            <input
+                                v-model="couponInput"
+                                type="text"
+                                class="w-full flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 uppercase focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                placeholder="e.g. SUMMER20"
+                                :disabled="couponApplying"
+                                @keydown.enter.prevent="applyCoupon"
+                            />
+                            <button
+                                type="button"
+                                class="shrink-0 rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="couponApplying"
+                                @click="applyCoupon"
+                            >
+                                {{ couponApplying ? 'Applying...' : 'Apply' }}
+                            </button>
+                        </div>
+
+                        <div
+                            v-else
+                            class="mt-4 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3"
+                        >
+                            <div>
+                                <p class="text-sm font-semibold text-green-800">
+                                    {{ coupon.code }} applied
+                                </p>
+                                <p class="text-sm text-green-700">
+                                    You saved ৳{{ coupon.discount.toFixed(2) }}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="text-sm font-medium text-red-600 hover:underline"
+                                @click="removeCoupon"
+                            >
+                                Remove
+                            </button>
+                        </div>
+
+                        <p
+                            v-show="couponError"
+                            class="mt-2 text-sm text-red-600"
+                        >
+                            {{ couponError }}
+                        </p>
+                    </section>
+
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
                             Payment Method
                         </h2>
                         <p class="mt-1 text-sm text-gray-500">
@@ -455,6 +616,9 @@ function handleSubmit(): void {
                             :subtotal="cartSubtotal"
                             :delivery-charge="deliveryCharge"
                             :delivery-note="deliveryNote"
+                            :discount="couponDiscount"
+                            :coupon-code="coupon?.code ?? null"
+                            :grand-total="grandTotal"
                             :is-empty="cart.length === 0"
                             :processing="form.processing"
                             :submit-label="submitLabel"

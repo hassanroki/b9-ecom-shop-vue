@@ -259,3 +259,54 @@ export type AdminDashboardRecentOrder = {
     payment_status: PaymentStatus;
     placed_at: string | null;
 };
+
+export interface AdminCoupon {
+    id: number;
+    name: string;
+    code: string;
+    description: string | null;
+    type: 'fixed' | 'percentage';
+    value: string;
+    minimum_amount: string;
+    maximum_discount: string | null;
+    usage_limit: number | null;
+    usage_per_user: number;
+    used_count: number;
+    is_active: boolean;
+    starts_at: string | null;
+    expires_at: string | null;
+    created_at: string;
+    updated_at: string;
+    status: string;
+    formatted_discount: string;
+}
+
+export interface Paginated<T> {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+    links: {
+        url: string | null;
+        label: string;
+        active: boolean;
+    }[];
+}
+
+export interface CouponFormData {
+    name: string;
+    code: string;
+    description: string;
+    type: 'fixed' | 'percentage';
+    value: string;
+    minimum_amount: string;
+    maximum_discount: string;
+    usage_limit: string;
+    usage_per_user: number;
+    starts_at: string;
+    expires_at: string;
+    is_active: boolean;
+}

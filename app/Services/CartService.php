@@ -84,6 +84,25 @@ class CartService
     }
 
     /**
+     * Cart subtotal (sum of quantity * active product price).
+     * Only counts items whose product is currently active.
+     */
+    public function subtotal(): float
+    {
+        $cart = $this->findCart();
+
+        if (! $cart) {
+            return 0.0;
+        }
+
+        return (float) $cart->items()
+            ->whereHas('product', fn($q) => $q->where('is_active', true))
+            ->with('product:id,price')
+            ->get()
+            ->sum(fn(CartItem $item) => $item->quantity * (float) $item->product->price);
+    }
+
+    /**
      * Full cart items resolved with product details.
      *
      * @return list<array{productId: int, name: string, slug: string, price: float, img: string, qty: int, inStock: bool}>
