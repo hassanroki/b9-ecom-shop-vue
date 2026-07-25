@@ -7,6 +7,10 @@ export function useShopCarousel(slideCount: number) {
     let autoTimer: ReturnType<typeof setInterval> | undefined;
 
     function goTo(index: number): void {
+        if (slideCount === 0) {
+            return;
+        }
+
         current.value = (index + slideCount) % slideCount;
     }
 
@@ -33,10 +37,7 @@ export function useShopCarousel(slideCount: number) {
         return event.changedTouches[0].screenX;
     }
 
-    function handleTouchEnd(
-        event: TouchEvent,
-        touchStartX: number,
-    ): void {
+    function handleTouchEnd(event: TouchEvent, touchStartX: number): void {
         const delta = event.changedTouches[0].screenX - touchStartX;
 
         if (Math.abs(delta) > 40) {
@@ -51,7 +52,9 @@ export function useShopCarousel(slideCount: number) {
     }
 
     onMounted(() => {
-        startAuto();
+        if (slideCount > 0) {
+            startAuto();
+        }
     });
 
     onUnmounted(() => {

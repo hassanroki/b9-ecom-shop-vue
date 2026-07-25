@@ -10,8 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'user_id',
     'product_id',
 ])]
-class WishList extends Model
+class Wishlist extends Model
 {
+    protected $table = 'wishlists';
     //
     public function user(): BelongsTo
     {
