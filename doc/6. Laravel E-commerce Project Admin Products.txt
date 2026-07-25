@@ -1,0 +1,3112 @@
+6. Laravel E-commerce Project Admin Products:
+============================================
+
+1. Edit Product Model:
+----------------------
+Edit app/Models/Product.php:
+----------------------------
+<?php
+
+namespace App\Models;
+
+use Database\Factories\ProductFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+#[Fillable([
+    'category_id',
+    'name',
+    'slug',
+    'short_description',
+    'description',
+    'price',
+    'compare_at_price',
+    'stock_status',
+    'is_best_seller',
+    'is_featured',
+    'is_active',
+    'sold_count',
+])]
+class Product extends Model
+{
+    /** @use HasFactory<ProductFactory> */
+    use HasFactory, SoftDeletes;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'price' => 'decimal:2',
+            'compare_at_price' => 'decimal:2',
+            'is_best_seller' => 'boolean',
+            'is_featured' => 'boolean',
+            'is_active' => 'boolean',
+            'sold_count' => 'integer',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'stock_status' => 'in_stock',
+        'is_best_seller' => false,
+        'is_featured' => false,
+        'is_active' => true,
+        'sold_count' => 0,
+    ];
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class);
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function cartItems(): HasMany
+    {
+        return $this->hasMany(CartItem::class);
+    }
+
+    public function wishlists(): HasMany
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+}
+
+
+
+
+2. Edit ProductImage Model:
+---------------------------
+Edit app/Models/ProductImage.php:
+--------------------------------
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'product_id',
+    'image_path',
+    'alt_text',
+    'is_primary',
+    'sort_order',
+])]
+class ProductImage extends Model
+{
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_primary' => 'boolean',
+            'sort_order' => 'integer',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected $attributes = [
+        'is_primary' => false,
+        'sort_order' => 0,
+    ];
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+
+
+
+
+3. Edit Category Controller:
+----------------------------
+Edit app/Http/Controllers/Admin/CategoryController.php:
+-------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreCategoryRequest;
+use App\Http\Requests\Admin\UpdateCategoryRequest;
+use App\Models\Category;
+use App\Services\CategoryImageService;
+use Illuminate\Http\RedirectResponse;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class CategoryController extends Controller
+{
+    public function __construct(
+        private readonly CategoryImageService $categoryImageService,
+    ) {}
+
+    /**
+     * Display a listing of the categories.
+     */
+    public function index(): Response
+    {
+        $categories = Category::query()
+            ->withCount('products')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn(Category $category): array => $this->categoryPayload($category));
+
+        return Inertia::render('admin/categories/Index', [
+            'categories' => $categories,
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new category.
+     */
+    public function create(): Response
+    {
+        return Inertia::render('admin/categories/Create');
+    }
+
+    /**
+     * Store a newly created category in storage.
+     */
+    public function store(StoreCategoryRequest $request): RedirectResponse
+    {
+        $data = $this->categoryImageService->prepareForStorage(
+            $request->safe()->except(['image_file']),
+            $request->file('image_file'),
+        );
+
+        Category::query()->create($data);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Category created.')]);
+
+        return to_route('admin.categories.index');
+    }
+
+    /**
+     * Display the specified category.
+     */
+    public function show(Category $category): Response
+    {
+        $category->loadCount('products');
+
+        return Inertia::render('admin/categories/Show', [
+            'category' => $this->categoryPayload($category),
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified category.
+     */
+    public function edit(Category $category): Response
+    {
+        return Inertia::render('admin/categories/Edit', [
+            'category' => $this->categoryPayload($category),
+        ]);
+    }
+
+    /**
+     * Update the specified category in storage.
+     */
+    public function update(UpdateCategoryRequest $request, Category $category): RedirectResponse
+    {
+        $data = $this->categoryImageService->prepareForStorage(
+            $request->safe()->except(['image_file']),
+            $request->file('image_file'),
+            $category,
+        );
+
+        $category->update($data);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Category updated.')]);
+
+        return to_route('admin.categories.index');
+    }
+
+    /**
+     * Remove the specified category from storage.
+     */
+    public function destroy(Category $category): RedirectResponse
+    {
+        $this->categoryImageService->deleteIfUploaded($category->image);
+
+        $category->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Category deleted.')]);
+
+        return to_route('admin.categories.index');
+    }
+
+    /**
+     * @return array{
+     *     id: int,
+     *     name: string,
+     *     slug: string,
+     *     image: string|null,
+     *     image_source: 'url'|'upload',
+     *     image_url: string,
+     *     description: string|null,
+     *     sort_order: int,
+     *     is_active: bool,
+     *     products_count: int,
+     *     created_at: string,
+     *     updated_at: string
+     * }
+     */
+    private function categoryPayload(Category $category): array
+    {
+        return [
+            'id' => $category->id,
+            'name' => $category->name,
+            'slug' => $category->slug,
+            ...$this->categoryImageService->payloadForCategory($category),
+            'description' => $category->description,
+            'sort_order' => $category->sort_order,
+            'is_active' => $category->is_active,
+            'products_count' => (int) ($category->products_count ?? 0),
+            'created_at' => $category->created_at?->toIso8601String() ?? '',
+            'updated_at' => $category->updated_at?->toIso8601String() ?? '',
+        ];
+    }
+}
+
+
+
+
+4. Create Product Controller:
+-----------------------------
+Command: php artisan make:controller Admin/ProductController.php
+
+Edit app/Http/Controllers/Admin/ProductController.php:
+-------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreProductRequest;
+use App\Http\Requests\Admin\UpdateProductRequest;
+use App\Models\Category;
+use App\Models\Product;
+use App\Models\ProductImage;
+use App\Services\ProductImageService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class ProductController extends Controller
+{
+    public function __construct(
+        private readonly ProductImageService $productImageService,
+    ) {}
+
+    /**
+     * Display a listing of the products.
+     */
+    public function index(): Response
+    {
+        $products = Product::query()
+            ->with(['category:id,name', 'images' => fn($query) => $query->where('is_primary', true)])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn(Product $product): array => $this->listPayload($product));
+
+        return Inertia::render('admin/products/Index', [
+            'products' => $products,
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new product.
+     */
+    public function create(): Response
+    {
+        return Inertia::render('admin/products/Create', [
+            'categories' => $this->categoryOptions(),
+        ]);
+    }
+
+    /**
+     * Store a newly created product in storage.
+     */
+    public function store(StoreProductRequest $request): RedirectResponse
+    {
+        DB::transaction(function () use ($request): void {
+            $data = $request->safe()->except(['images']);
+
+            $product = Product::query()->create($data);
+
+            $this->productImageService->syncImages(
+                $product,
+                $this->imagesFromRequest($request),
+            );
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Product created.')]);
+
+        return to_route('admin.products.index');
+    }
+
+    /**
+     * Display the specified product.
+     */
+    public function show(Product $product): Response
+    {
+        $product->load(['category:id,name', 'images' => fn($query) => $query->orderBy('sort_order')]);
+
+        return Inertia::render('admin/products/Show', [
+            'product' => $this->detailPayload($product),
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified product.
+     */
+    public function edit(Product $product): Response
+    {
+        $product->load(['category:id,name', 'images' => fn($query) => $query->orderBy('sort_order')]);
+
+        return Inertia::render('admin/products/Edit', [
+            'product' => $this->detailPayload($product),
+            'categories' => $this->categoryOptions(),
+        ]);
+    }
+
+    /**
+     * Update the specified product in storage.
+     */
+    public function update(UpdateProductRequest $request, Product $product): RedirectResponse
+    {
+        DB::transaction(function () use ($request, $product): void {
+            $data = $request->safe()->except(['images']);
+
+            $product->update($data);
+
+            $this->productImageService->syncImages(
+                $product,
+                $this->imagesFromRequest($request),
+            );
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Product updated.')]);
+
+        return to_route('admin.products.index');
+    }
+
+    /**
+     * Remove the specified product from storage.
+     */
+    public function destroy(Product $product): RedirectResponse
+    {
+        DB::transaction(function () use ($product): void {
+            $this->productImageService->deleteUploadedImages($product);
+            $product->delete();
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Product deleted.')]);
+
+        return to_route('admin.products.index');
+    }
+
+    /**
+     * @return list<array{id: int, name: string}>
+     */
+    private function categoryOptions(): array
+    {
+        return Category::query()
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn(Category $category): array => [
+                'id' => $category->id,
+                'name' => $category->name,
+            ])
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function imagesFromRequest(StoreProductRequest|UpdateProductRequest $request): array
+    {
+        $images = $request->input('images', []);
+
+        if (! is_array($images)) {
+            return [];
+        }
+
+        foreach ($images as $index => $image) {
+            if (! is_array($image)) {
+                continue;
+            }
+
+            $uploadedFile = $request->file("images.{$index}.file");
+
+            if ($uploadedFile instanceof UploadedFile) {
+                $images[$index]['file'] = $uploadedFile;
+            }
+        }
+
+        return array_values($images);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function listPayload(Product $product): array
+    {
+        $primaryImage = $product->images->firstWhere('is_primary', true)
+            ?? $product->images->first();
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'category' => [
+                'id' => $product->category->id,
+                'name' => $product->category->name,
+            ],
+            'price' => (float) $product->price,
+            'compare_at_price' => $product->compare_at_price !== null
+                ? (float) $product->compare_at_price
+                : null,
+            'stock_status' => $product->stock_status,
+            'is_active' => $product->is_active,
+            'is_best_seller' => $product->is_best_seller,
+            'is_featured' => $product->is_featured,
+            'sold_count' => $product->sold_count,
+            'image' => $this->productImageService->resolveUrl($primaryImage?->image_path),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function detailPayload(Product $product): array
+    {
+        $primaryImage = $product->images->firstWhere('is_primary', true)
+            ?? $product->images->first();
+
+        return [
+            'id' => $product->id,
+            'category_id' => $product->category_id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'short_description' => $product->short_description,
+            'description' => $product->description,
+            'price' => (float) $product->price,
+            'compare_at_price' => $product->compare_at_price !== null
+                ? (float) $product->compare_at_price
+                : null,
+            'stock_status' => $product->stock_status,
+            'is_best_seller' => $product->is_best_seller,
+            'is_featured' => $product->is_featured,
+            'is_active' => $product->is_active,
+            'sold_count' => $product->sold_count,
+            'category' => [
+                'id' => $product->category->id,
+                'name' => $product->category->name,
+            ],
+            'image' => $this->productImageService->resolveUrl($primaryImage?->image_path),
+            'images' => $product->images
+                ->map(fn(ProductImage $image): array => $this->productImageService->formPayload($image))
+                ->values()
+                ->all(),
+            'created_at' => $product->created_at?->toIso8601String() ?? '',
+            'updated_at' => $product->updated_at?->toIso8601String() ?? '',
+        ];
+    }
+}
+
+
+
+
+5. Create ProductImage Service:
+-------------------------------
+Edit app/ProductImageService.php:
+---------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Product;
+use App\Models\ProductImage;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+class ProductImageService
+{
+    /**
+     * Resolve a stored image value to a public URL.
+     */
+    public function resolveUrl(?string $image, int $width = 400, int $quality = 70): ?string
+    {
+        if (! filled($image)) {
+            return null;
+        }
+
+        if (filter_var($image, FILTER_VALIDATE_URL)) {
+            return $image;
+        }
+
+        if (Str::startsWith($image, 'photo-')) {
+            return "https://images.unsplash.com/{$image}?auto=format&fit=crop&w={$width}&q={$quality}";
+        }
+
+        /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
+        $storage = Storage::disk('public');
+
+        return $storage->url($image);
+    }
+
+    /**
+     * Determine whether the image value refers to an uploaded file.
+     */
+    public function isUploadedPath(?string $image): bool
+    {
+        return filled($image)
+            && ! filter_var($image, FILTER_VALIDATE_URL)
+            && ! Str::startsWith($image, 'photo-');
+    }
+
+    /**
+     * @return array{
+     *     id: int,
+     *     source: 'url'|'upload',
+     *     image_path: string,
+     *     preview: string|null,
+     *     alt_text: string|null,
+     *     is_primary: bool,
+     *     sort_order: int
+     * }
+     */
+    public function formPayload(ProductImage $image): array
+    {
+        $isUploaded = $this->isUploadedPath($image->image_path);
+
+        return [
+            'id' => $image->id,
+            'source' => $isUploaded ? 'upload' : 'url',
+            'image_path' => $image->image_path,
+            'preview' => $this->resolveUrl($image->image_path),
+            'alt_text' => $image->alt_text,
+            'is_primary' => $image->is_primary,
+            'sort_order' => $image->sort_order,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $images
+     */
+    public function syncImages(Product $product, array $images): void
+    {
+        $normalizedImages = $this->normalizeImages($images);
+        $existingImages = $product->images()->get()->keyBy('id');
+        $keptIds = [];
+
+        foreach ($normalizedImages as $imageData) {
+            $imageId = filled($imageData['id'] ?? null) ? (int) $imageData['id'] : null;
+            $existingImage = $imageId !== null ? $existingImages->get($imageId) : null;
+
+            if ($imageId !== null && $existingImage === null) {
+                continue;
+            }
+
+            $storedPath = $this->resolveStoredPathFromInput($imageData, $existingImage);
+
+            if ($storedPath === null) {
+                if ($existingImage !== null) {
+                    $this->deleteIfUploaded($existingImage->image_path);
+                    $existingImage->delete();
+                }
+
+                continue;
+            }
+
+            $attributes = [
+                'image_path' => $storedPath,
+                'alt_text' => filled($imageData['alt_text'] ?? null)
+                    ? $imageData['alt_text']
+                    : $product->name,
+                'is_primary' => (bool) ($imageData['is_primary'] ?? false),
+                'sort_order' => (int) $imageData['sort_order'],
+            ];
+
+            if ($existingImage !== null) {
+                $existingImage->update($attributes);
+                $keptIds[] = $existingImage->id;
+
+                continue;
+            }
+
+            $createdImage = $product->images()->create($attributes);
+            $keptIds[] = $createdImage->id;
+        }
+
+        $product->images()
+            ->whereNotIn('id', $keptIds)
+            ->get()
+            ->each(function (ProductImage $image): void {
+                $this->deleteIfUploaded($image->image_path);
+                $image->delete();
+            });
+    }
+
+    /**
+     * Delete uploaded images for a product.
+     */
+    public function deleteUploadedImages(Product $product): void
+    {
+        $product->loadMissing('images');
+
+        foreach ($product->images as $image) {
+            $this->deleteIfUploaded($image->image_path);
+        }
+    }
+
+    /**
+     * Delete an uploaded product image from storage when no longer needed.
+     */
+    public function deleteIfUploaded(?string $image): void
+    {
+        if (! $this->isUploadedPath($image)) {
+            return;
+        }
+
+        Storage::disk('public')->delete($image);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $images
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeImages(array $images): array
+    {
+        /** @var Collection<int, array<string, mixed>> $collection */
+        $collection = collect($images)
+            ->sortBy(fn(array $image): int => (int) ($image['sort_order'] ?? 0))
+            ->values()
+            ->map(function (array $image, int $index): array {
+                $image['sort_order'] = $index;
+
+                return $image;
+            });
+
+        $primaryIndex = $collection->search(
+            fn(array $image): bool => filter_var($image['is_primary'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        );
+
+        if ($primaryIndex === false && $collection->isNotEmpty()) {
+            $primaryIndex = 0;
+        }
+
+        return $collection
+            ->map(function (array $image, int $index) use ($primaryIndex): array {
+                $image['is_primary'] = $index === $primaryIndex;
+
+                return $image;
+            })
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $imageData
+     */
+    private function resolveStoredPathFromInput(array $imageData, ?ProductImage $existingImage = null): ?string
+    {
+        $source = (string) ($imageData['source'] ?? 'url');
+
+        if ($source === 'upload') {
+            $uploadedFile = $imageData['file'] ?? null;
+
+            if ($uploadedFile instanceof UploadedFile) {
+                $this->deleteIfUploaded($existingImage?->image_path);
+
+                return $uploadedFile->store('products', 'public');
+            }
+
+            return $existingImage?->image_path;
+        }
+
+        if ($existingImage !== null && $this->isUploadedPath($existingImage->image_path)) {
+            $this->deleteIfUploaded($existingImage->image_path);
+        }
+
+        $imagePath = $imageData['image_path'] ?? null;
+
+        return filled($imagePath) ? $imagePath : null;
+    }
+}
+
+
+
+
+6. Create Store Product Request:
+--------------------------------
+Command: php artisan make:request Admin/StoreProductRequest
+Edit app/Http/Requests/Admin/StoreProductRequest.php
+----------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Admin;
+
+use App\Concerns\ProductValidationRules;
+use App\Support\RichTextSanitizer;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
+
+class StoreProductRequest extends FormRequest
+{
+    use ProductValidationRules;
+
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return $this->user()?->role === 'admin';
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return $this->productRules();
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        $slug = $this->input('slug');
+
+        $this->merge([
+            'slug' => filled($slug) ? Str::slug((string) $slug) : Str::slug((string) $this->input('name')),
+            'is_best_seller' => $this->boolean('is_best_seller'),
+            'is_featured' => $this->boolean('is_featured'),
+            'is_active' => $this->boolean('is_active'),
+            'images' => $this->normalizeImages(),
+            'description' => RichTextSanitizer::clean($this->input('description')),
+        ]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeImages(): array
+    {
+        $images = $this->input('images', []);
+
+        if (! is_array($images)) {
+            return [];
+        }
+
+        return collect($images)
+            ->filter(fn($image): bool => is_array($image))
+            ->map(function (array $image): array {
+                $image['is_primary'] = filter_var($image['is_primary'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+                return $image;
+            })
+            ->values()
+            ->all();
+    }
+}
+
+
+
+
+7. Create Update Product Request:
+---------------------------------
+Command: php artisan make:request Admin/UpdateProductRequest
+Edit app/Http/Requests/Admin/UpdateProductRequest.php
+------------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Admin;
+
+use App\Concerns\ProductValidationRules;
+use App\Models\Product;
+use App\Support\RichTextSanitizer;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
+
+class UpdateProductRequest extends FormRequest
+{
+    use ProductValidationRules;
+
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return $this->user()?->role === 'admin';
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        /** @var Product $product */
+        $product = $this->route('product');
+
+        return $this->productRules($product->id);
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        $slug = $this->input('slug');
+
+        $this->merge([
+            'slug' => filled($slug) ? Str::slug((string) $slug) : Str::slug((string) $this->input('name')),
+            'is_best_seller' => $this->boolean('is_best_seller'),
+            'is_featured' => $this->boolean('is_featured'),
+            'is_active' => $this->boolean('is_active'),
+            'images' => $this->normalizeImages(),
+            'description' => RichTextSanitizer::clean($this->input('description')),
+        ]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeImages(): array
+    {
+        $images = $this->input('images', []);
+
+        if (! is_array($images)) {
+            return [];
+        }
+
+        return collect($images)
+            ->filter(fn($image): bool => is_array($image))
+            ->map(function (array $image): array {
+                $image['is_primary'] = filter_var($image['is_primary'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+                return $image;
+            })
+            ->values()
+            ->all();
+    }
+}
+
+
+
+
+8. Create RichTextSanitizer Support:
+------------------------------------
+Edit app/Support/RichTextSanitizer.php:
+---------------------------------------
+<?php
+
+namespace App\Support;
+
+class RichTextSanitizer
+{
+    private const ALLOWED_TAGS = '<p><br><strong><b><em><i><u><s><strike><h2><h3><h4><ul><ol><li><a><blockquote><hr>';
+
+    /**
+     * Sanitize rich text content before it is stored.
+     */
+    public static function clean(?string $html): ?string
+    {
+        if (! filled($html)) {
+            return null;
+        }
+
+        $withoutExecutableBlocks = preg_replace(
+            '/<(script|style)\b[^>]*>.*?<\/\1>/is',
+            '',
+            $html,
+        ) ?? $html;
+
+        $cleaned = trim(strip_tags($withoutExecutableBlocks, self::ALLOWED_TAGS));
+
+        return $cleaned === '' ? null : $cleaned;
+    }
+
+    /**
+     * Prepare rich text for safe display on the storefront.
+     */
+    public static function forDisplay(?string $content): string
+    {
+        if (! filled($content)) {
+            return '';
+        }
+
+        if ($content !== strip_tags($content)) {
+            return self::clean($content) ?? '';
+        }
+
+        return collect(preg_split('/\R{2,}/', trim($content)) ?: [])
+            ->filter(fn(string $paragraph): bool => trim($paragraph) !== '')
+            ->map(fn(string $paragraph): string => '<p>' . e(trim($paragraph)) . '</p>')
+            ->join('');
+    }
+}
+
+
+
+
+9. Edit RichTextEditor.vue components:
+--------------------------------------
+Edit resources/js/components/admin/RichTextEditor.vue:
+------------------------------------------------------
+<script setup lang="ts">
+import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
+import TextAlign from '@tiptap/extension-text-align';
+import Underline from '@tiptap/extension-underline';
+import StarterKit from '@tiptap/starter-kit';
+import { Editor, EditorContent } from '@tiptap/vue-3';
+import {
+    AlignCenter,
+    AlignLeft,
+    AlignRight,
+    Bold,
+    Heading2,
+    Heading3,
+    Italic,
+    Link2,
+    List,
+    ListOrdered,
+    Minus,
+    Quote,
+    Redo2,
+    Strikethrough,
+    Underline as UnderlineIcon,
+    Undo2,
+} from '@lucide/vue';
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+type Props = {
+    modelValue: string;
+    placeholder?: string;
+    disabled?: boolean;
+};
+
+const props = withDefaults(defineProps<Props>(), {
+    placeholder: 'Write your content…',
+    disabled: false,
+});
+
+const emit = defineEmits<{
+    'update:modelValue': [value: string];
+}>();
+
+const editor = shallowRef<Editor | null>(null);
+const isReady = ref(false);
+
+onMounted(() => {
+    editor.value = new Editor({
+        content: props.modelValue || '',
+        editable: !props.disabled,
+        extensions: [
+            StarterKit.configure({
+                heading: {
+                    levels: [2, 3, 4],
+                },
+            }),
+            Underline,
+            Link.configure({
+                openOnClick: false,
+                HTMLAttributes: {
+                    rel: 'noopener noreferrer nofollow',
+                    target: '_blank',
+                },
+            }),
+            TextAlign.configure({
+                types: ['heading', 'paragraph'],
+            }),
+            Placeholder.configure({
+                placeholder: props.placeholder,
+            }),
+        ],
+        onUpdate: ({ editor: currentEditor }) => {
+            emit('update:modelValue', currentEditor.getHTML());
+        },
+    });
+
+    isReady.value = true;
+});
+
+watch(
+    () => props.modelValue,
+    (value) => {
+        if (!editor.value) {
+            return;
+        }
+
+        const currentHtml = editor.value.getHTML();
+        const normalizedValue = value || '<p></p>';
+
+        if (currentHtml !== normalizedValue) {
+            editor.value.commands.setContent(normalizedValue, { emitUpdate: false });
+        }
+    },
+);
+
+watch(
+    () => props.disabled,
+    (disabled) => {
+        editor.value?.setEditable(!disabled);
+    },
+);
+
+onBeforeUnmount(() => {
+    editor.value?.destroy();
+});
+
+function toggleLink(): void {
+    if (!editor.value) {
+        return;
+    }
+
+    const previousUrl = editor.value.getAttributes('link').href as string | undefined;
+    const url = window.prompt('Enter URL', previousUrl ?? 'https://');
+
+    if (url === null) {
+        return;
+    }
+
+    if (url === '') {
+        editor.value.chain().focus().extendMarkRange('link').unsetLink().run();
+
+        return;
+    }
+
+    editor.value.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+}
+
+function toolbarButtonClass(isActive = false): string {
+    return cn(
+        'size-8',
+        isActive && 'bg-muted text-foreground',
+    );
+}
+</script>
+
+<template>
+    <div class="overflow-hidden rounded-md border border-input bg-background">
+        <div v-if="isReady && editor" class="flex flex-wrap gap-1 border-b border-input bg-muted/30 p-2">
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass(editor.isActive('bold'))"
+                @click="editor.chain().focus().toggleBold().run()">
+                <Bold class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass(editor.isActive('italic'))"
+                @click="editor.chain().focus().toggleItalic().run()">
+                <Italic class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass(editor.isActive('underline'))"
+                @click="editor.chain().focus().toggleUnderline().run()">
+                <UnderlineIcon class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass(editor.isActive('strike'))"
+                @click="editor.chain().focus().toggleStrike().run()">
+                <Strikethrough class="size-4" />
+            </Button>
+
+            <span class="mx-1 w-px self-stretch bg-border" />
+
+            <Button type="button" variant="ghost" size="icon"
+                :class="toolbarButtonClass(editor.isActive('heading', { level: 2 }))"
+                @click="editor.chain().focus().toggleHeading({ level: 2 }).run()">
+                <Heading2 class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon"
+                :class="toolbarButtonClass(editor.isActive('heading', { level: 3 }))"
+                @click="editor.chain().focus().toggleHeading({ level: 3 }).run()">
+                <Heading3 class="size-4" />
+            </Button>
+
+            <span class="mx-1 w-px self-stretch bg-border" />
+
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass(editor.isActive('bulletList'))"
+                @click="editor.chain().focus().toggleBulletList().run()">
+                <List class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon"
+                :class="toolbarButtonClass(editor.isActive('orderedList'))"
+                @click="editor.chain().focus().toggleOrderedList().run()">
+                <ListOrdered class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass(editor.isActive('blockquote'))"
+                @click="editor.chain().focus().toggleBlockquote().run()">
+                <Quote class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass(editor.isActive('link'))"
+                @click="toggleLink">
+                <Link2 class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass()"
+                @click="editor.chain().focus().setHorizontalRule().run()">
+                <Minus class="size-4" />
+            </Button>
+
+            <span class="mx-1 w-px self-stretch bg-border" />
+
+            <Button type="button" variant="ghost" size="icon"
+                :class="toolbarButtonClass(editor.isActive({ textAlign: 'left' }))"
+                @click="editor.chain().focus().setTextAlign('left').run()">
+                <AlignLeft class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon"
+                :class="toolbarButtonClass(editor.isActive({ textAlign: 'center' }))"
+                @click="editor.chain().focus().setTextAlign('center').run()">
+                <AlignCenter class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon"
+                :class="toolbarButtonClass(editor.isActive({ textAlign: 'right' }))"
+                @click="editor.chain().focus().setTextAlign('right').run()">
+                <AlignRight class="size-4" />
+            </Button>
+
+            <span class="mx-1 w-px self-stretch bg-border" />
+
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass()"
+                :disabled="!editor.can().chain().focus().undo().run()" @click="editor.chain().focus().undo().run()">
+                <Undo2 class="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" :class="toolbarButtonClass()"
+                :disabled="!editor.can().chain().focus().redo().run()" @click="editor.chain().focus().redo().run()">
+                <Redo2 class="size-4" />
+            </Button>
+        </div>
+
+        <div v-if="!isReady" class="min-h-48 animate-pulse bg-muted/20" />
+
+        <EditorContent v-else :editor="editor" class="rich-text-editor min-h-48 px-3 py-3 text-sm" />
+    </div>
+</template>
+
+<style>
+.rich-text-editor .tiptap {
+    outline: none;
+}
+
+.rich-text-editor .tiptap p.is-editor-empty:first-child::before {
+    color: hsl(var(--muted-foreground));
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+}
+
+.rich-text-editor .tiptap :is(h2, h3, h4) {
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 1rem 0 0.5rem;
+}
+
+.rich-text-editor .tiptap h2 {
+    font-size: 1.25rem;
+}
+
+.rich-text-editor .tiptap h3 {
+    font-size: 1.125rem;
+}
+
+.rich-text-editor .tiptap h4 {
+    font-size: 1rem;
+}
+
+.rich-text-editor .tiptap :is(ul, ol) {
+    margin: 0.75rem 0;
+    padding-left: 1.25rem;
+}
+
+.rich-text-editor .tiptap ul {
+    list-style: disc;
+}
+
+.rich-text-editor .tiptap ol {
+    list-style: decimal;
+}
+
+.rich-text-editor .tiptap blockquote {
+    border-left: 3px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    margin: 0.75rem 0;
+    padding-left: 0.75rem;
+}
+
+.rich-text-editor .tiptap a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+}
+
+.rich-text-editor .tiptap hr {
+    border: 0;
+    border-top: 1px solid hsl(var(--border));
+    margin: 1rem 0;
+}
+</style>
+
+
+
+
+10. Edit RichTextContent.vue components:
+--------------------------------------
+Edit resources/js/components/RichTextContent.vue:
+-------------------------------------------------
+<script setup lang="ts">
+import { computed } from 'vue';
+import { sanitizeRichText } from '@/lib/sanitizeRichText';
+import { cn } from '@/lib/utils';
+
+type Props = {
+    html: string;
+    class?: string;
+};
+
+const props = defineProps<Props>();
+
+const sanitizedHtml = computed(() => sanitizeRichText(props.html));
+</script>
+
+<template>
+    <div v-if="sanitizedHtml" :class="cn('rich-text-content text-sm leading-relaxed', props.class)"
+        v-html="sanitizedHtml" />
+    <p v-else :class="cn('text-sm text-muted-foreground', props.class)">
+        <slot>No description provided.</slot>
+    </p>
+</template>
+
+<style>
+.rich-text-content :is(h2, h3, h4) {
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 1rem 0 0.5rem;
+}
+
+.rich-text-content h2 {
+    font-size: 1.25rem;
+}
+
+.rich-text-content h3 {
+    font-size: 1.125rem;
+}
+
+.rich-text-content h4 {
+    font-size: 1rem;
+}
+
+.rich-text-content :is(p, ul, ol, blockquote) {
+    margin: 0.75rem 0;
+}
+
+.rich-text-content :is(ul, ol) {
+    padding-left: 1.25rem;
+}
+
+.rich-text-content ul {
+    list-style: disc;
+}
+
+.rich-text-content ol {
+    list-style: decimal;
+}
+
+.rich-text-content blockquote {
+    border-left: 3px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    padding-left: 0.75rem;
+}
+
+.rich-text-content a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+}
+
+.rich-text-content hr {
+    border: 0;
+    border-top: 1px solid hsl(var(--border));
+    margin: 1rem 0;
+}
+</style>
+
+
+
+
+11. Edit sanitizeRichText.ts types:
+-----------------------------------
+Edit resources/js/lib/sanitizeRichText.ts:
+------------------------------------------
+import DOMPurify from 'dompurify';
+
+const ALLOWED_TAGS = [
+    'p',
+    'br',
+    'strong',
+    'b',
+    'em',
+    'i',
+    'u',
+    's',
+    'strike',
+    'h2',
+    'h3',
+    'h4',
+    'ul',
+    'ol',
+    'li',
+    'a',
+    'blockquote',
+    'hr',
+];
+
+export function sanitizeRichText(html: string): string {
+    if (!html) {
+        return '';
+    }
+
+    return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS,
+        ALLOWED_ATTR: ['href', 'target', 'rel'],
+    });
+}
+
+
+
+
+
+12. Edit Route/admin.php:
+------------------------
+<?php
+
+use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\ProductController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware(['auth', 'verified', 'admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::resource('categories', CategoryController::class);
+        Route::resource('products', ProductController::class);
+    });
+
+
+
+
+
+13. Edit admin.ts type:
+-----------------------
+Edit resources/js/types/admin.ts:
+---------------------------------
+export type CategoryImageSource = 'url' | 'upload';
+
+export type ImageSource = CategoryImageSource;
+
+export type AdminCategoryOption = {
+    id: number;
+    name: string;
+    is_deleted: boolean;
+};
+
+export type AdminCategory = {
+    id: number;
+    name: string;
+    slug: string;
+    image: string | null;
+    image_source: CategoryImageSource;
+    image_url: string;
+    description: string | null;
+    sort_order: number;
+    is_active: boolean;
+    products_count: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type CategoryFormData = {
+    name: string;
+    slug: string;
+    image_source: CategoryImageSource;
+    image: string;
+    image_file: File | null;
+    description: string;
+    sort_order: number;
+    is_active: boolean;
+};
+
+export type StockStatus = 'in_stock' | 'stock_out';
+
+export type AdminProductListItem = {
+    id: number;
+    name: string;
+    slug: string;
+    category: AdminCategoryOption;
+    price: number;
+    compare_at_price: number | null;
+    stock_status: StockStatus;
+    is_active: boolean;
+    is_best_seller: boolean;
+    is_featured: boolean;
+    sold_count: number;
+    image: string | null;
+};
+
+export type AdminProductImagePayload = {
+    id: number;
+    source: ImageSource;
+    image_path: string;
+    preview: string | null;
+    alt_text: string | null;
+    is_primary: boolean;
+    sort_order: number;
+};
+
+export type ProductImageFormItem = {
+    id: number | null;
+    client_key: string;
+    source: ImageSource;
+    image_path: string;
+    preview_url: string | null;
+    alt_text: string;
+    is_primary: boolean;
+    sort_order: number;
+    file: File | null;
+};
+
+export type AdminProduct = AdminProductListItem & {
+    category_id: number;
+    short_description: string | null;
+    description: string | null;
+    images: AdminProductImagePayload[];
+    created_at: string;
+    updated_at: string;
+};
+
+export type ProductFormData = {
+    category_id: number | '';
+    name: string;
+    slug: string;
+    short_description: string;
+    description: string;
+    price: number | '';
+    compare_at_price: number | '';
+    stock_status: StockStatus;
+    is_best_seller: boolean;
+    is_featured: boolean;
+    is_active: boolean;
+    sold_count: number;
+    images: ProductImageFormItem[];
+};
+
+
+
+
+14. Edit AppSidebar.vue components
+Edit resources/js/components/AppSidebar.vue:
+--------------------------------------------
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { BookOpen, FolderGit2, LayoutGrid, Package, Tags } from '@lucide/vue';
+import AppLogo from '@/components/AppLogo.vue';
+import NavFooter from '@/components/NavFooter.vue';
+import NavMain from '@/components/NavMain.vue';
+import NavUser from '@/components/NavUser.vue';
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { dashboard } from '@/routes';
+import { index as categoriesIndex } from '@/routes/admin/categories';
+import { index as productsIndex } from '@/routes/admin/products';
+import type { NavItem } from '@/types';
+
+const mainNavItems: NavItem[] = [
+    {
+        title: 'Dashboard',
+        href: dashboard(),
+        icon: LayoutGrid,
+    },
+    {
+        title: 'Categories',
+        href: categoriesIndex(),
+        icon: Tags,
+    },
+    {
+        title: 'Products',
+        href: productsIndex(),
+        icon: Package,
+    },
+];
+
+const footerNavItems: NavItem[] = [
+    {
+        title: 'Repository',
+        href: 'https://github.com/laravel/vue-starter-kit',
+        icon: FolderGit2,
+    },
+    {
+        title: 'Documentation',
+        href: 'https://laravel.com/docs/starter-kits#vue',
+        icon: BookOpen,
+    },
+];
+</script>
+
+<template>
+    <Sidebar collapsible="icon" variant="inset">
+        <SidebarHeader>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton size="lg" as-child>
+                        <Link :href="dashboard()">
+                            <AppLogo />
+                        </Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent>
+            <NavMain :items="mainNavItems" />
+        </SidebarContent>
+
+        <SidebarFooter>
+            <NavFooter :items="footerNavItems" />
+            <NavUser />
+        </SidebarFooter>
+    </Sidebar>
+    <slot />
+</template>
+
+
+
+15. Edit Select.vue components:
+-------------------------------
+Edit resources/js/components/ui/select/Select.vue:
+--------------------------------------------------
+<script setup lang="ts">
+import type { SelectRootEmits, SelectRootProps } from "reka-ui"
+import { SelectRoot, useForwardPropsEmits } from "reka-ui"
+
+const props = defineProps<SelectRootProps>()
+const emits = defineEmits<SelectRootEmits>()
+
+const forwarded = useForwardPropsEmits(props, emits)
+</script>
+
+<template>
+    <SelectRoot v-slot="slotProps" data-slot="select" v-bind="forwarded">
+        <slot v-bind="slotProps" />
+    </SelectRoot>
+</template>
+
+
+
+
+16. Products Pages:
+-------------------
+
+16.1 Create Index.vue Pages:
+----------------------------
+Edit resources/js/Pages/Index.vue:
+----------------------------------
+<script setup lang="ts">
+import { Form, Head, Link } from '@inertiajs/vue3';
+import { Eye, Pencil, Plus, Trash2 } from '@lucide/vue';
+import ProductController from '@/actions/App/Http/Controllers/Admin/ProductController';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { formatTaka } from '@/lib/shop/currency';
+import { dashboard } from '@/routes';
+import { create, edit, index, show } from '@/routes/admin/products';
+import type { AdminProductListItem } from '@/types/admin';
+
+defineProps<{
+    products: AdminProductListItem[];
+}>();
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
+            {
+                title: 'Products',
+                href: index(),
+            },
+        ],
+    },
+});
+</script>
+
+<template>
+
+    <Head title="Products" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <Heading title="Products" description="Manage your store catalog" />
+
+            <Button as-child>
+                <Link :href="create()">
+                    <Plus class="size-4" />
+                    Add product
+                </Link>
+            </Button>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[1100px] text-sm">
+                    <thead class="border-b bg-muted/40 text-left">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Image</th>
+                            <th class="px-4 py-3 font-medium">Name</th>
+                            <th class="px-4 py-3 font-medium">Category</th>
+                            <th class="px-4 py-3 font-medium">Price</th>
+                            <th class="px-4 py-3 font-medium">Stock</th>
+                            <th class="px-4 py-3 font-medium">Sold</th>
+                            <th class="px-4 py-3 font-medium">Status</th>
+                            <th class="px-4 py-3 text-right font-medium">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="product in products" :key="product.id" class="border-b last:border-b-0">
+                            <td class="px-4 py-3">
+                                <div class="size-12 overflow-hidden rounded-md border bg-muted">
+                                    <img v-if="product.image" :src="product.image" :alt="product.name"
+                                        class="size-full object-cover" />
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="font-medium">{{ product.name }}</div>
+                                <div class="text-xs text-muted-foreground">
+                                    {{ product.slug }}
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span>{{ product.category.name }}</span>
+                                <Badge v-if="product.category.is_deleted" variant="secondary" class="ml-2">
+                                    Deleted
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div>{{ formatTaka(product.price) }}</div>
+                                <div v-if="product.compare_at_price" class="text-xs text-muted-foreground line-through">
+                                    {{ formatTaka(product.compare_at_price) }}
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <Badge :variant="product.stock_status === 'in_stock'
+                                        ? 'default'
+                                        : 'secondary'
+                                    ">
+                                    {{
+                                        product.stock_status === 'in_stock'
+                                            ? 'In stock'
+                                            : 'Out of stock'
+                                    }}
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3">{{ product.sold_count }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap gap-1">
+                                    <Badge :variant="product.is_active
+                                            ? 'default'
+                                            : 'secondary'
+                                        ">
+                                        {{
+                                            product.is_active
+                                                ? 'Active'
+                                                : 'Inactive'
+                                        }}
+                                    </Badge>
+                                    <Badge v-if="product.is_featured" variant="outline">
+                                        Featured
+                                    </Badge>
+                                    <Badge v-if="product.is_best_seller" variant="outline">
+                                        Best seller
+                                    </Badge>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-2">
+                                    <Button as-child variant="outline" size="sm">
+                                        <Link :href="show(product.id)">
+                                            <Eye class="size-4" />
+                                            View
+                                        </Link>
+                                    </Button>
+                                    <Button as-child variant="outline" size="sm">
+                                        <Link :href="edit(product.id)">
+                                            <Pencil class="size-4" />
+                                            Edit
+                                        </Link>
+                                    </Button>
+                                    <Dialog>
+                                        <DialogTrigger as-child>
+                                            <Button variant="destructive" size="sm">
+                                                <Trash2 class="size-4" />
+                                                Delete
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <Form v-bind="ProductController.destroy.form(
+                                                product.id,
+                                            )
+                                                " :options="{
+                                                    preserveScroll: true,
+                                                }" v-slot="{ processing }">
+                                                <DialogHeader class="space-y-3">
+                                                    <DialogTitle>
+                                                        Delete product?
+                                                    </DialogTitle>
+                                                    <DialogDescription>
+                                                        This will remove
+                                                        <strong>{{
+                                                            product.name
+                                                            }}</strong>
+                                                        from your catalog.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+
+                                                <DialogFooter class="gap-2">
+                                                    <DialogClose as-child>
+                                                        <Button type="button" variant="secondary">
+                                                            Cancel
+                                                        </Button>
+                                                    </DialogClose>
+                                                    <Button type="submit" variant="destructive" :disabled="processing">
+                                                        Delete
+                                                    </Button>
+                                                </DialogFooter>
+                                            </Form>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr v-if="products.length === 0">
+                            <td colspan="8" class="px-4 py-10 text-center text-muted-foreground">
+                                No products yet. Create your first product.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+16.2 Create Show.vue Pages:
+----------------------------
+Edit resources/js/Pages/Show.vue:
+----------------------------------
+<script setup lang="ts">
+import { Head, Link, setLayoutProps } from '@inertiajs/vue3';
+import { Pencil } from '@lucide/vue';
+import Heading from '@/components/Heading.vue';
+import RichTextContent from '@/components/RichTextContent.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { formatTaka } from '@/lib/shop/currency';
+import { dashboard } from '@/routes';
+import { edit, index, show } from '@/routes/admin/products';
+import type { AdminProduct } from '@/types/admin';
+
+const props = defineProps<{
+    product: AdminProduct;
+}>();
+
+setLayoutProps({
+    breadcrumbs: [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+        },
+        {
+            title: 'Products',
+            href: index(),
+        },
+        {
+            title: props.product.name,
+            href: show(props.product.id),
+        },
+    ],
+});
+</script>
+
+<template>
+
+    <Head :title="product.name" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <Heading :title="product.name" description="Product details" />
+
+            <Button as-child>
+                <Link :href="edit(product.id)">
+                    <Pencil class="size-4" />
+                    Edit product
+                </Link>
+            </Button>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-[320px_1fr]">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Images</CardTitle>
+                    <CardDescription>
+                        Gallery ordered by sort position
+                    </CardDescription>
+                </CardHeader>
+                <CardContent class="grid gap-3">
+                    <div v-if="product.images.length === 0" class="text-sm text-muted-foreground">
+                        No images uploaded.
+                    </div>
+                    <div v-for="image in product.images" :key="image.id" class="overflow-hidden rounded-lg border">
+                        <div class="aspect-square bg-muted">
+                            <img v-if="image.preview" :src="image.preview" :alt="image.alt_text || product.name"
+                                class="size-full object-cover" />
+                        </div>
+                        <div class="flex items-center justify-between gap-2 p-2 text-xs">
+                            <span class="text-muted-foreground">
+                                Order {{ image.sort_order + 1 }}
+                            </span>
+                            <Badge v-if="image.is_primary" variant="outline">
+                                Primary
+                            </Badge>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Overview</CardTitle>
+                    <CardDescription>
+                        Catalog and pricing information
+                    </CardDescription>
+                </CardHeader>
+                <CardContent class="grid gap-4">
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Category</p>
+                        <p class="font-medium">{{ product.category.name }}</p>
+                    </div>
+
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Slug</p>
+                        <p class="font-medium">{{ product.slug }}</p>
+                    </div>
+
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Short description
+                        </p>
+                        <p class="font-medium">
+                            {{
+                                product.short_description ||
+                                'No short description.'
+                            }}
+                        </p>
+                    </div>
+
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Description
+                        </p>
+                        <RichTextContent :html="product.description ?? ''" />
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">Price</p>
+                            <p class="font-medium">
+                                {{ formatTaka(product.price) }}
+                            </p>
+                        </div>
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">
+                                Compare at
+                            </p>
+                            <p class="font-medium">
+                                {{
+                                    product.compare_at_price
+                                        ? formatTaka(product.compare_at_price)
+                                        : '—'
+                                }}
+                            </p>
+                        </div>
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">Sold</p>
+                            <p class="font-medium">{{ product.sold_count }}</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <Badge :variant="product.stock_status === 'in_stock'
+                                ? 'default'
+                                : 'secondary'
+                            ">
+                            {{
+                                product.stock_status === 'in_stock'
+                                    ? 'In stock'
+                                    : 'Out of stock'
+                            }}
+                        </Badge>
+                        <Badge :variant="product.is_active ? 'default' : 'secondary'
+                            ">
+                            {{ product.is_active ? 'Active' : 'Inactive' }}
+                        </Badge>
+                        <Badge v-if="product.is_featured" variant="outline">
+                            Featured
+                        </Badge>
+                        <Badge v-if="product.is_best_seller" variant="outline">
+                            Best seller
+                        </Badge>
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">
+                                Created
+                            </p>
+                            <p class="font-medium">
+                                {{
+                                    new Date(
+                                        product.created_at,
+                                    ).toLocaleString()
+                                }}
+                            </p>
+                        </div>
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">
+                                Updated
+                            </p>
+                            <p class="font-medium">
+                                {{
+                                    new Date(
+                                        product.updated_at,
+                                    ).toLocaleString()
+                                }}
+                            </p>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    </div>
+</template>
+
+
+
+
+16.3 Create Edit.vue Pages:
+----------------------------
+Edit resources/js/Pages/Edit.vue:
+----------------------------------
+<script setup lang="ts">
+import { Head, Link, setLayoutProps, useForm } from '@inertiajs/vue3';
+import ProductController from '@/actions/App/Http/Controllers/Admin/ProductController';
+import ProductForm from '@/components/admin/ProductForm.vue';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { mapServerProductImages, serializeProductImagesForSubmit } from '@/lib/admin/productImages';
+import { dashboard } from '@/routes';
+import { edit, index } from '@/routes/admin/products';
+import type {
+    AdminCategoryOption,
+    AdminProduct,
+    ProductFormData,
+} from '@/types/admin';
+
+const props = defineProps<{
+    product: AdminProduct;
+    categories: AdminCategoryOption[];
+}>();
+
+setLayoutProps({
+    breadcrumbs: [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+        },
+        {
+            title: 'Products',
+            href: index(),
+        },
+        {
+            title: `Edit ${props.product.name}`,
+            href: edit(props.product.id),
+        },
+    ],
+});
+
+const form = useForm<ProductFormData>({
+    category_id: props.product.category_id,
+    name: props.product.name,
+    slug: props.product.slug,
+    short_description: props.product.short_description ?? '',
+    description: props.product.description ?? '',
+    price: props.product.price,
+    compare_at_price: props.product.compare_at_price ?? '',
+    stock_status: props.product.stock_status,
+    is_best_seller: props.product.is_best_seller,
+    is_featured: props.product.is_featured,
+    is_active: props.product.is_active,
+    sold_count: props.product.sold_count,
+    images: mapServerProductImages(props.product.images),
+});
+
+function submit(): void {
+    form
+        .transform((data) => ({
+            ...data,
+            _method: 'put',
+            images: serializeProductImagesForSubmit(data.images),
+        }))
+        .post(ProductController.update.url(props.product.id), {
+            forceFormData: true,
+            preserveScroll: true,
+        });
+}
+</script>
+
+<template>
+
+    <Head :title="`Edit ${product.name}`" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <Heading :title="`Edit ${product.name}`" description="Update product details" />
+
+        <div class="max-w-3xl rounded-xl border border-sidebar-border/70 p-6 dark:border-sidebar-border">
+            <form class="space-y-6" @submit.prevent="submit">
+                <ProductForm :form="form" :categories="categories" />
+
+                <div class="flex items-center gap-3">
+                    <Button type="submit" :disabled="form.processing">
+                        Save changes
+                    </Button>
+                    <Button as-child variant="outline">
+                        <Link :href="index()">Cancel</Link>
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+16.4 Create Create.vue Pages:
+----------------------------
+Edit resources/js/Pages/Create.vue:
+----------------------------------
+<script setup lang="ts">
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import ProductController from '@/actions/App/Http/Controllers/Admin/ProductController';
+import ProductForm from '@/components/admin/ProductForm.vue';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { serializeProductImagesForSubmit } from '@/lib/admin/productImages';
+import { dashboard } from '@/routes';
+import { create, index } from '@/routes/admin/products';
+import type { AdminCategoryOption, ProductFormData } from '@/types/admin';
+
+defineProps<{
+    categories: AdminCategoryOption[];
+}>();
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
+            {
+                title: 'Products',
+                href: index(),
+            },
+            {
+                title: 'Create',
+                href: create(),
+            },
+        ],
+    },
+});
+
+const form = useForm<ProductFormData>({
+    category_id: '',
+    name: '',
+    slug: '',
+    short_description: '',
+    description: '',
+    price: '',
+    compare_at_price: '',
+    stock_status: 'in_stock',
+    is_best_seller: false,
+    is_featured: false,
+    is_active: true,
+    sold_count: 0,
+    images: [],
+});
+
+function submit(): void {
+    form
+        .transform((data) => ({
+            ...data,
+            images: serializeProductImagesForSubmit(data.images),
+        }))
+        .post(ProductController.store.url(), {
+            forceFormData: true,
+            preserveScroll: true,
+        });
+}
+</script>
+
+<template>
+
+    <Head title="Create product" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <Heading title="Create product" description="Add a new product to your catalog" />
+
+        <div class="max-w-3xl rounded-xl border border-sidebar-border/70 p-6 dark:border-sidebar-border">
+            <form class="space-y-6" @submit.prevent="submit">
+                <ProductForm :form="form" :categories="categories" />
+
+                <div class="flex items-center gap-3">
+                    <Button type="submit" :disabled="form.processing">
+                        Create product
+                    </Button>
+                    <Button as-child variant="outline">
+                        <Link :href="index()">Cancel</Link>
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+17. Create ProductForm components:
+---------------------------------
+Edit resources/js/components/admin/ProductForm.vue:
+---------------------------------------------------
+<script setup lang="ts">
+import type { InertiaForm } from '@inertiajs/vue3';
+import InputError from '@/components/InputError.vue';
+import ProductImagesField from '@/components/admin/ProductImagesField.vue';
+import RichTextEditor from '@/components/admin/RichTextEditor.vue';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import type { AdminCategoryOption, ProductFormData } from '@/types/admin';
+
+type Props = {
+    form: InertiaForm<ProductFormData>;
+    categories: AdminCategoryOption[];
+};
+
+defineProps<Props>();
+
+const inputClass =
+    'border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-24 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
+
+const selectClass =
+    'border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
+</script>
+
+<template>
+    <div class="grid gap-8">
+        <section class="grid gap-6">
+            <h3 class="text-sm font-medium text-muted-foreground">
+                Basic information
+            </h3>
+
+            <div class="grid gap-2">
+                <Label for="category_id">Category</Label>
+                <select id="category_id" v-model="form.category_id" :class="selectClass" required>
+                    <option disabled value="">Select a category</option>
+                    <option v-for="category in categories" :key="category.id" :value="category.id">
+                        {{ category.name }}
+                    </option>
+                </select>
+                <InputError :message="form.errors.category_id" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="name">Name</Label>
+                <Input id="name" v-model="form.name" required placeholder="Product name" />
+                <InputError :message="form.errors.name" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="slug">Slug</Label>
+                <Input id="slug" v-model="form.slug" placeholder="product-slug" />
+                <p class="text-xs text-muted-foreground">
+                    Leave blank to generate from the name.
+                </p>
+                <InputError :message="form.errors.slug" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="short_description">Short description</Label>
+                <textarea id="short_description" v-model="form.short_description" rows="2" :class="inputClass"
+                    placeholder="Brief summary shown on product cards" />
+                <InputError :message="form.errors.short_description" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label>Description</Label>
+                <RichTextEditor v-model="form.description"
+                    placeholder="Write a detailed product description with formatting" />
+                <InputError :message="form.errors.description" />
+            </div>
+        </section>
+
+        <section class="grid gap-6">
+            <h3 class="text-sm font-medium text-muted-foreground">
+                Pricing & inventory
+            </h3>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div class="grid gap-2">
+                    <Label for="price">Price</Label>
+                    <Input id="price" v-model="form.price" type="number" min="0" step="0.01" required />
+                    <InputError :message="form.errors.price" />
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="compare_at_price">Compare at price</Label>
+                    <Input id="compare_at_price" v-model="form.compare_at_price" type="number" min="0" step="0.01"
+                        placeholder="Optional" />
+                    <InputError :message="form.errors.compare_at_price" />
+                </div>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div class="grid gap-2">
+                    <Label for="stock_status">Stock status</Label>
+                    <select id="stock_status" v-model="form.stock_status" :class="selectClass" required>
+                        <option value="in_stock">In stock</option>
+                        <option value="stock_out">Out of stock</option>
+                    </select>
+                    <InputError :message="form.errors.stock_status" />
+                </div>
+
+                <div class="grid gap-2 sm:max-w-xs">
+                    <Label for="sold_count">Sold count</Label>
+                    <Input id="sold_count" v-model.number="form.sold_count" type="number" min="0" required />
+                    <InputError :message="form.errors.sold_count" />
+                </div>
+            </div>
+        </section>
+
+        <ProductImagesField :form="form" />
+
+        <section class="grid gap-4">
+            <h3 class="text-sm font-medium text-muted-foreground">Flags</h3>
+
+            <div class="flex flex-wrap gap-6">
+                <div class="flex items-center gap-3">
+                    <input id="is_active" v-model="form.is_active" type="checkbox"
+                        class="size-4 rounded border border-input" />
+                    <Label for="is_active" class="cursor-pointer font-normal">
+                        Active
+                    </Label>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <input id="is_featured" v-model="form.is_featured" type="checkbox"
+                        class="size-4 rounded border border-input" />
+                    <Label for="is_featured" class="cursor-pointer font-normal">
+                        Featured
+                    </Label>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <input id="is_best_seller" v-model="form.is_best_seller" type="checkbox"
+                        class="size-4 rounded border border-input" />
+                    <Label for="is_best_seller" class="cursor-pointer font-normal">
+                        Best seller
+                    </Label>
+                </div>
+            </div>
+
+            <InputError :message="form.errors.is_active" />
+            <InputError :message="form.errors.is_featured" />
+            <InputError :message="form.errors.is_best_seller" />
+        </section>
+    </div>
+</template>
+
+
+
+
+18. Create ProductValidationRules.php Concerns:
+-----------------------------------------------
+Edit app/Concerns/ProductValidationRules.php:
+---------------------------------------------
+<?php
+
+namespace App\Concerns;
+
+use Illuminate\Validation\Rule;
+
+trait ProductValidationRules
+{
+    /**
+     * @return array<string, mixed>
+     */
+    protected function productRules(?int $productId = null): array
+    {
+        return [
+            'category_id' => ['required', 'integer', 'exists:categories,id'],
+            'name' => ['required', 'string', 'max:200'],
+            'slug' => [
+                'required',
+                'string',
+                'max:220',
+                'alpha_dash',
+                Rule::unique('products', 'slug')->ignore($productId),
+            ],
+            'short_description' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:10000'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'compare_at_price' => ['nullable', 'numeric', 'min:0'],
+            'stock_status' => ['required', Rule::in(['in_stock', 'stock_out'])],
+            'is_best_seller' => ['boolean'],
+            'is_featured' => ['boolean'],
+            'is_active' => ['boolean'],
+            'sold_count' => ['required', 'integer', 'min:0'],
+            'images' => ['nullable', 'array'],
+            'images.*.id' => ['nullable', 'integer'],
+            'images.*.source' => ['required', Rule::in(['url', 'upload'])],
+            'images.*.image_path' => ['nullable', 'string', 'max:2048'],
+            'images.*.file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+            'images.*.alt_text' => ['nullable', 'string', 'max:255'],
+            'images.*.is_primary' => ['boolean'],
+            'images.*.sort_order' => ['required', 'integer', 'min:0'],
+        ];
+    }
+}
+
+
+
+
+
+19. Create ProductImagesField components:
+-----------------------------------------
+Edit resources/js/components/admin/ProductImagesField.vue:
+-----------------------------------------------------------
+<script setup lang="ts">
+import { computed, onBeforeUnmount, reactive } from 'vue';
+import type { InertiaForm } from '@inertiajs/vue3';
+import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/vue';
+import InputError from '@/components/InputError.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    createEmptyProductImage,
+    resolveImagePreview,
+} from '@/lib/admin/productImages';
+import type { ProductFormData } from '@/types/admin';
+
+type Props = {
+    form: InertiaForm<ProductFormData>;
+};
+
+const props = defineProps<Props>();
+
+const filePreviewUrls = reactive<Record<string, string>>({});
+
+const sortedImages = computed(() =>
+    [...props.form.images].sort((a, b) => a.sort_order - b.sort_order),
+);
+
+function setFilePreview(clientKey: string, file: File | null): void {
+    if (filePreviewUrls[clientKey]) {
+        URL.revokeObjectURL(filePreviewUrls[clientKey]);
+        delete filePreviewUrls[clientKey];
+    }
+
+    if (file) {
+        filePreviewUrls[clientKey] = URL.createObjectURL(file);
+    }
+}
+
+onBeforeUnmount(() => {
+    Object.values(filePreviewUrls).forEach((url) => {
+        URL.revokeObjectURL(url);
+    });
+});
+
+function imageIndex(clientKey: string): number {
+    return props.form.images.findIndex(
+        (image) => image.client_key === clientKey,
+    );
+}
+
+function previewForImage(clientKey: string): string | null {
+    const image = props.form.images.find(
+        (item) => item.client_key === clientKey,
+    );
+
+    if (!image) {
+        return null;
+    }
+
+    return resolveImagePreview(image, filePreviewUrls[clientKey] ?? null);
+}
+
+function addUrlImage(): void {
+    const isPrimary = props.form.images.length === 0;
+
+    props.form.images.push(
+        createEmptyProductImage(props.form.images.length, isPrimary),
+    );
+}
+
+function onUploadFiles(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    const files = Array.from(target.files ?? []);
+
+    files.forEach((file, offset) => {
+        const sortOrder = props.form.images.length + offset;
+        const isPrimary = props.form.images.length === 0 && offset === 0;
+        const clientKey = crypto.randomUUID();
+
+        setFilePreview(clientKey, file);
+
+        props.form.images.push({
+            ...createEmptyProductImage(sortOrder, isPrimary),
+            client_key: clientKey,
+            source: 'upload',
+            file,
+        });
+    });
+
+    target.value = '';
+}
+
+function removeImage(clientKey: string): void {
+    const index = imageIndex(clientKey);
+
+    if (index === -1) {
+        return;
+    }
+
+    const wasPrimary = props.form.images[index].is_primary;
+    setFilePreview(clientKey, null);
+    props.form.images.splice(index, 1);
+    reindexImages();
+
+    if (wasPrimary && props.form.images.length > 0) {
+        props.form.images[0].is_primary = true;
+    }
+}
+
+function setPrimary(clientKey: string): void {
+    props.form.images.forEach((image) => {
+        image.is_primary = image.client_key === clientKey;
+    });
+}
+
+function moveImage(clientKey: string, direction: -1 | 1): void {
+    const images = sortedImages.value;
+    const currentIndex = images.findIndex(
+        (image) => image.client_key === clientKey,
+    );
+    const targetIndex = currentIndex + direction;
+
+    if (currentIndex === -1 || targetIndex < 0 || targetIndex >= images.length) {
+        return;
+    }
+
+    const reordered = [...images];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+    reindexFromSorted(reordered);
+}
+
+function reindexImages(): void {
+    reindexFromSorted(
+        [...props.form.images].sort((a, b) => a.sort_order - b.sort_order),
+    );
+}
+
+function reindexFromSorted(images: ProductFormData['images']): void {
+    props.form.images = images.map((image, index) => ({
+        ...image,
+        sort_order: index,
+    }));
+}
+
+function setImageSource(
+    clientKey: string,
+    source: ProductFormData['images'][number]['source'],
+): void {
+    const image = props.form.images.find((item) => item.client_key === clientKey);
+
+    if (!image) {
+        return;
+    }
+
+    image.source = source;
+    image.file = null;
+}
+
+function onImageFileChange(clientKey: string, event: Event): void {
+    const target = event.target as HTMLInputElement;
+    const image = props.form.images.find((item) => item.client_key === clientKey);
+
+    if (!image) {
+        return;
+    }
+
+    image.file = target.files?.[0] ?? null;
+    setFilePreview(clientKey, image.file);
+}
+
+function imageError(field: string, index: number): string | undefined {
+    return props.form.errors[`images.${index}.${field}` as keyof typeof props.form.errors];
+}
+
+</script>
+
+<template>
+    <section class="grid gap-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h3 class="text-sm font-medium text-muted-foreground">
+                    Product images
+                </h3>
+                <p class="text-xs text-muted-foreground">
+                    Add multiple images, choose the primary image, and set the
+                    display order.
+                </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" @click="addUrlImage">
+                    <Plus class="size-4" />
+                    Add URL image
+                </Button>
+                <Button type="button" variant="outline" size="sm" as-child>
+                    <label class="cursor-pointer">
+                        <Plus class="size-4" />
+                        Upload images
+                        <input type="file" class="sr-only" accept="image/jpeg,image/jpg,image/png,image/webp" multiple
+                            @change="onUploadFiles" />
+                    </label>
+                </Button>
+            </div>
+        </div>
+
+        <InputError :message="form.errors.images" />
+
+        <div v-if="sortedImages.length === 0"
+            class="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            No images added yet. Add a URL image or upload files.
+        </div>
+
+        <div v-else class="grid gap-4">
+            <div v-for="(image, displayIndex) in sortedImages" :key="image.client_key"
+                class="rounded-xl border border-sidebar-border/70 p-4 dark:border-sidebar-border">
+                <div class="flex flex-col gap-4 lg:flex-row">
+                    <div class="size-28 shrink-0 overflow-hidden rounded-lg border bg-muted">
+                        <img v-if="previewForImage(image.client_key)" :src="previewForImage(image.client_key)!"
+                            :alt="image.alt_text || 'Product image preview'" class="size-full object-cover" />
+                        <div v-else class="flex size-full items-center justify-center text-xs text-muted-foreground">
+                            No preview
+                        </div>
+                    </div>
+
+                    <div class="grid flex-1 gap-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">
+                                Order {{ displayIndex + 1 }}
+                            </Badge>
+                            <Badge v-if="image.is_primary">Primary</Badge>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="rounded-md border px-3 py-1.5 text-sm transition-colors"
+                                :class="image.source === 'url'
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'border-input bg-background hover:bg-muted'
+                                    " @click="setImageSource(image.client_key, 'url')">
+                                URL
+                            </button>
+                            <button type="button" class="rounded-md border px-3 py-1.5 text-sm transition-colors"
+                                :class="image.source === 'upload'
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'border-input bg-background hover:bg-muted'
+                                    " @click="setImageSource(image.client_key, 'upload')">
+                                Upload
+                            </button>
+                        </div>
+
+                        <div v-if="image.source === 'url'" class="grid gap-2">
+                            <Label :for="`image-path-${image.client_key}`">
+                                Image URL or Unsplash ID
+                            </Label>
+                            <Input :id="`image-path-${image.client_key}`" v-model="image.image_path"
+                                placeholder="https://example.com/image.jpg or photo-1505740420928-..." />
+                            <InputError :message="imageError(
+                                'image_path',
+                                imageIndex(image.client_key),
+                            )
+                                " />
+                        </div>
+
+                        <div v-else class="grid gap-2">
+                            <Label :for="`image-file-${image.client_key}`">
+                                Image file
+                            </Label>
+                            <Input :id="`image-file-${image.client_key}`" type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                @change="onImageFileChange(image.client_key, $event)" />
+                            <p class="text-xs text-muted-foreground">
+                                JPG, PNG, or WebP up to 2 MB.
+                                <span v-if="image.id">
+                                    Leave empty to keep the current file.
+                                </span>
+                            </p>
+                            <InputError :message="imageError(
+                                'file',
+                                imageIndex(image.client_key),
+                            )
+                                " />
+                        </div>
+
+                        <div class="grid gap-2">
+                            <Label :for="`alt-text-${image.client_key}`">
+                                Alt text
+                            </Label>
+                            <Input :id="`alt-text-${image.client_key}`" v-model="image.alt_text"
+                                placeholder="Describe this image" />
+                            <InputError :message="imageError(
+                                'alt_text',
+                                imageIndex(image.client_key),
+                            )
+                                " />
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-2">
+                            <Button type="button" variant="outline" size="sm" :disabled="displayIndex === 0"
+                                @click="moveImage(image.client_key, -1)">
+                                <ArrowUp class="size-4" />
+                                Move up
+                            </Button>
+                            <Button type="button" variant="outline" size="sm"
+                                :disabled="displayIndex === sortedImages.length - 1"
+                                @click="moveImage(image.client_key, 1)">
+                                <ArrowDown class="size-4" />
+                                Move down
+                            </Button>
+                            <Button type="button" :variant="image.is_primary ? 'default' : 'outline'" size="sm"
+                                @click="setPrimary(image.client_key)">
+                                Set as primary
+                            </Button>
+                            <Button type="button" variant="destructive" size="sm"
+                                @click="removeImage(image.client_key)">
+                                <Trash2 class="size-4" />
+                                Remove
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</template>
+
+
+
+
+
+20. Create productImages.ts lib:
+--------------------------------
+Edit resources/js/lib/admin/productImages.ts:
+---------------------------------------------
+import type {
+    AdminProductImagePayload,
+    ProductImageFormItem,
+} from '@/types/admin';
+
+export function createEmptyProductImage(
+    sortOrder: number,
+    isPrimary = false,
+): ProductImageFormItem {
+    return {
+        id: null,
+        client_key: crypto.randomUUID(),
+        source: 'url',
+        image_path: '',
+        preview_url: null,
+        alt_text: '',
+        is_primary: isPrimary,
+        sort_order: sortOrder,
+        file: null,
+    };
+}
+
+export function mapServerProductImages(
+    images: AdminProductImagePayload[],
+): ProductImageFormItem[] {
+    return images.map((image) => ({
+        id: image.id,
+        client_key: `existing-${image.id}`,
+        source: image.source,
+        image_path: image.image_path,
+        preview_url: image.preview,
+        alt_text: image.alt_text ?? '',
+        is_primary: image.is_primary,
+        sort_order: image.sort_order,
+        file: null,
+    }));
+}
+
+export function resolveImagePreview(
+    image: Pick<
+        ProductImageFormItem,
+        'source' | 'image_path' | 'preview_url' | 'file'
+    >,
+    objectUrl?: string | null,
+): string | null {
+    if (image.source === 'upload') {
+        return objectUrl ?? image.preview_url;
+    }
+
+    if (!image.image_path) {
+        return image.preview_url;
+    }
+
+    if (image.image_path.startsWith('photo-')) {
+        return `https://images.unsplash.com/${image.image_path}?auto=format&fit=crop&w=400&q=70`;
+    }
+
+    if (
+        image.image_path.startsWith('http://') ||
+        image.image_path.startsWith('https://')
+    ) {
+        return image.image_path;
+    }
+
+    return image.preview_url;
+}
+
+export function serializeProductImagesForSubmit(
+    images: ProductImageFormItem[],
+): Array<Omit<ProductImageFormItem, 'client_key' | 'preview_url'>> {
+    return images.map((image, index) => ({
+        id: image.id,
+        source: image.source,
+        image_path: image.image_path,
+        alt_text: image.alt_text,
+        is_primary: image.is_primary,
+        sort_order: index,
+        file: image.file,
+    }));
+}
+
+
+
+
+
+21. Edit ShopProductTabs components:
+--------------------------------------
+Edit resources/js/components/shop/ShopProductTabs.vue:
+------------------------------------------------------
+<script setup lang="ts">
+import { ref } from 'vue';
+import RichTextContent from '@/components/RichTextContent.vue';
+import ShopStarRating from '@/components/shop/ShopStarRating.vue';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import type { ShopProductDetail } from '@/types/shop';
+
+const { product } = defineProps<{
+    product: ShopProductDetail;
+}>();
+
+const { showToast } = useShopUi();
+
+const activeTab = ref<'description' | 'reviews'>('description');
+const selectedRating = ref(0);
+const hoverRating = ref(0);
+const reviewName = ref('');
+const reviewText = ref('');
+
+function activateTab(tab: 'description' | 'reviews'): void {
+    activeTab.value = tab;
+}
+
+function displayRating(): number {
+    return hoverRating.value || selectedRating.value;
+}
+
+function setRating(value: number): void {
+    selectedRating.value = value;
+}
+
+function submitReview(event: Event): void {
+    event.preventDefault();
+
+    if (!selectedRating.value) {
+        showToast('Please select a star rating');
+
+        return;
+    }
+
+    showToast('Thanks! Your review is pending approval.');
+    reviewName.value = '';
+    reviewText.value = '';
+    selectedRating.value = 0;
+    hoverRating.value = 0;
+}
+</script>
+
+<template>
+    <section class="border-t border-gray-200 bg-gray-50">
+        <div class="mx-auto max-w-7xl px-4 py-10 sm:px-6 md:py-14 lg:px-8">
+            <div class="border-b border-gray-200">
+                <div class="flex gap-6" role="tablist" aria-label="Product information">
+                    <button id="tab-desc" role="tab" :aria-selected="activeTab === 'description'"
+                        aria-controls="panel-desc" class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'description'
+                                ? 'border-shop-primary-600 text-shop-primary-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-900'
+                            " @click="activateTab('description')">
+                        Description
+                    </button>
+                    <button id="tab-rev" role="tab" :aria-selected="activeTab === 'reviews'" aria-controls="panel-rev"
+                        class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'reviews'
+                                ? 'border-shop-primary-600 text-shop-primary-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-900'
+                            " @click="activateTab('reviews')">
+                        Reviews
+                        <span class="text-gray-400">({{ product.reviews }})</span>
+                    </button>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'description'" id="panel-desc" role="tabpanel" aria-labelledby="tab-desc"
+                class="pt-6">
+                <RichTextContent :html="product.description" class="max-w-prose text-gray-600 md:text-base" />
+                <h3 v-if="product.features.length > 0" class="pt-2 text-base font-semibold text-gray-900">
+                    Key Features
+                </h3>
+                <ul v-if="product.features.length > 0"
+                    class="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-gray-600 md:text-base">
+                    <li v-for="(feature, index) in product.features" :key="index">
+                        {{ feature }}
+                    </li>
+                </ul>
+            </div>
+
+            <div v-show="activeTab === 'reviews'" id="panel-rev" role="tabpanel" aria-labelledby="tab-rev" class="pt-6"
+                tabindex="-1">
+                <div id="reviews" class="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                    <div class="lg:col-span-1">
+                        <div class="rounded-xl border border-gray-200 bg-white p-6 text-center">
+                            <p class="text-5xl font-bold text-gray-900">
+                                {{ product.rating }}
+                            </p>
+                            <div class="mt-2 flex justify-center">
+                                <ShopStarRating :rating="product.rating" size="lg" />
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">
+                                Based on {{ product.reviews }} reviews
+                            </p>
+                        </div>
+
+                        <div class="mt-4 space-y-2">
+                            <div v-for="item in product.ratingBreakdown" :key="item.stars"
+                                class="flex items-center gap-2 text-sm">
+                                <span class="w-8 shrink-0 text-gray-600">{{ item.stars }} ★</span>
+                                <div class="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
+                                    <div class="h-full rounded-full bg-shop-accent-500" :style="{
+                                        width: `${item.percent}%`,
+                                    }" />
+                                </div>
+                                <span class="w-9 shrink-0 text-right text-gray-400">{{ item.percent }}%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <div class="space-y-6">
+                            <div v-for="(review, index) in product.reviewList" :key="index"
+                                class="rounded-xl border border-gray-200 bg-white p-5">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-3">
+                                        <span
+                                            class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-shop-primary-50 text-sm font-semibold text-shop-primary-600">{{
+                                            review.name.charAt(0) }}</span>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-900">
+                                                {{ review.name }}
+                                                <span v-if="review.verified"
+                                                    class="ml-1 align-middle rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">Verified</span>
+                                            </p>
+                                            <div class="mt-0.5">
+                                                <ShopStarRating :rating="review.rating" size="sm" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs text-gray-400">{{
+                                        review.date
+                                        }}</span>
+                                </div>
+                                <p class="mt-3 text-sm leading-relaxed text-gray-600">
+                                    {{ review.text }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="mt-10 rounded-xl border border-gray-200 bg-white p-6">
+                            <h3 class="text-lg font-semibold text-gray-900">
+                                Write a review
+                            </h3>
+                            <p class="mt-1 text-sm text-gray-500">
+                                Your review will appear after approval by our
+                                team.
+                            </p>
+                            <form class="mt-4 space-y-4" @submit="submitReview">
+                                <div>
+                                    <span class="mb-1.5 block text-sm font-medium text-gray-700">Your rating</span>
+                                    <div class="flex gap-1" role="radiogroup" aria-label="Your rating"
+                                        @mouseleave="hoverRating = 0">
+                                        <button v-for="star in 5" :key="star" type="button" role="radio" :aria-checked="selectedRating === star
+                                            " :aria-label="`${star} star`"
+                                            class="rounded p-0.5 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                            @click="setRating(star)" @mouseenter="hoverRating = star">
+                                            <svg class="h-7 w-7" :class="star <= displayRating()
+                                                    ? 'text-shop-accent-500'
+                                                    : 'text-gray-300'
+                                                " fill="currentColor" viewBox="0 0 20 20">
+                                                <path
+                                                    d="M9.05 2.927c.3-.921 1.6-.921 1.9 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.368 2.447a1 1 0 00-.364 1.118l1.287 3.957c.3.922-.755 1.688-1.539 1.118l-3.366-2.447a1 1 0 00-1.176 0l-3.366 2.447c-.783.57-1.838-.196-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.354 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.951-.69l1.286-3.957z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="reviewName"
+                                        class="mb-1.5 block text-sm font-medium text-gray-700">Name</label>
+                                    <input id="reviewName" v-model="reviewName" type="text" required
+                                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                        placeholder="Your name" />
+                                </div>
+                                <div>
+                                    <label for="reviewText"
+                                        class="mb-1.5 block text-sm font-medium text-gray-700">Review</label>
+                                    <textarea id="reviewText" v-model="reviewText" rows="4" required
+                                        class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                        placeholder="Share your experience with this product…" />
+                                </div>
+                                <button type="submit"
+                                    class="rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none">
+                                    Submit Review
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</template>
+
+
+
+
+22. Some Command:
+----------------
+Command: npm install @tiptap/vue-3 @tiptap/pm @tiptap/starter-kit @tiptap/extension-link @tiptap/extension-placeholder @tiptap/extension-text-align @tiptap/extension-underline
+
+Command: npm install dompurify
+Command: npm install -D @types/dompurify
+
+
+
+
+

@@ -1,0 +1,2666 @@
+Laravel E-commerce Project  Admin Category:
+===========================================
+
+1) Create EnsureUserIsAdmin Middleware
+Command: php artisan make:middleware EnsureUserIsAdmin
+
+Edit app/Http/Middleware/EnsureUserIsAdmin.php:
+-----------------------------------------------
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class EnsureUserIsAdmin
+{
+    /**
+     * Handle an incoming request.
+     *
+     * @param  Closure(Request): Response  $next
+     */
+    public function handle(Request $request, Closure $next): Response
+    {
+        if ($request->user()?->role !== 'admin') {
+            abort(403);
+        }
+
+        return $next($request);
+    }
+}
+
+
+
+
+
+2. Create Category Controller:
+------------------------------
+Command: php artisan make:controller Admin/CategoryController
+Edit app/Http/Controllers/Admin/CategoryController.php:
+-------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreCategoryRequest;
+use App\Http\Requests\Admin\UpdateCategoryRequest;
+use App\Models\Category;
+use App\Services\CategoryImageService;
+use Illuminate\Http\RedirectResponse;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class CategoryController extends Controller
+{
+    public function __construct(
+        private readonly CategoryImageService $categoryImageService,
+    ) {}
+
+    /**
+     * Display a listing of the categories.
+     */
+    public function index(): Response
+    {
+        $categories = Category::query()
+            ->withCount('products')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Category $category): array => $this->categoryPayload($category));
+
+        return Inertia::render('admin/categories/Index', [
+            'categories' => $categories,
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new category.
+     */
+    public function create(): Response
+    {
+        return Inertia::render('admin/categories/Create');
+    }
+
+    /**
+     * Store a newly created category in storage.
+     */
+    public function store(StoreCategoryRequest $request): RedirectResponse
+    {
+        $data = $this->categoryImageService->prepareForStorage(
+            $request->safe()->except(['image_file']),
+            $request->file('image_file'),
+        );
+
+        Category::query()->create($data);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Category created.')]);
+
+        return to_route('admin.categories.index');
+    }
+
+    /**
+     * Display the specified category.
+     */
+    public function show(Category $category): Response
+    {
+        $category->loadCount('products');
+
+        return Inertia::render('admin/categories/Show', [
+            'category' => $this->categoryPayload($category),
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified category.
+     */
+    public function edit(Category $category): Response
+    {
+        return Inertia::render('admin/categories/Edit', [
+            'category' => $this->categoryPayload($category),
+        ]);
+    }
+
+    /**
+     * Update the specified category in storage.
+     */
+    public function update(UpdateCategoryRequest $request, Category $category): RedirectResponse
+    {
+        $data = $this->categoryImageService->prepareForStorage(
+            $request->safe()->except(['image_file']),
+            $request->file('image_file'),
+            $category,
+        );
+
+        $category->update($data);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Category updated.')]);
+
+        return to_route('admin.categories.index');
+    }
+
+    /**
+     * Remove the specified category from storage.
+     */
+    public function destroy(Category $category): RedirectResponse
+    {
+        $this->categoryImageService->deleteIfUploaded($category->image);
+
+        $category->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Category deleted.')]);
+
+        return to_route('admin.categories.index');
+    }
+
+    /**
+     * @return array{
+     *     id: int,
+     *     name: string,
+     *     slug: string,
+     *     image: string|null,
+     *     image_source: 'url'|'upload',
+     *     image_url: string,
+     *     description: string|null,
+     *     sort_order: int,
+     *     is_active: bool,
+     *     products_count: int,
+     *     created_at: string,
+     *     updated_at: string
+     * }
+     */
+    private function categoryPayload(Category $category): array
+    {
+        return [
+            'id' => $category->id,
+            'name' => $category->name,
+            'slug' => $category->slug,
+            ...$this->categoryImageService->payloadForCategory($category),
+            'description' => $category->description,
+            'sort_order' => $category->sort_order,
+            'is_active' => $category->is_active,
+            'products_count' => (int) ($category->products_count ?? 0),
+            'created_at' => $category->created_at?->toIso8601String() ?? '',
+            'updated_at' => $category->updated_at?->toIso8601String() ?? '',
+        ];
+    }
+}
+
+
+
+
+
+3. Create admin.php route:
+--------------------------
+Edit routes/admin.php:
+----------------------
+<?php
+
+use App\Http\Controllers\Admin\CategoryController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware(['auth', 'verified', 'admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::resource('categories', CategoryController::class);
+    });
+
+
+
+
+4. Create CategoryValidationRules.php Concerns:
+-----------------------------------------------
+Edit app/Concerns/CategoryValidationRules.php:
+----------------------------------------------
+<?php
+
+namespace App\Concerns;
+
+use Illuminate\Validation\Rule;
+
+trait CategoryValidationRules
+{
+    /**
+     * @return array<string, mixed>
+     */
+    protected function categoryRules(?int $categoryId = null): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:150'],
+            'slug' => [
+                'required',
+                'string',
+                'max:170',
+                'alpha_dash',
+                Rule::unique('categories', 'slug')->ignore($categoryId),
+            ],
+            'image_source' => ['required', Rule::in(['url', 'upload'])],
+            'image' => [
+                'nullable',
+                'string',
+                'max:2048',
+                Rule::when($this->input('image_source') === 'url', ['url']),
+            ],
+            'image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'sort_order' => ['required', 'integer', 'min:0'],
+            'is_active' => ['boolean'],
+        ];
+    }
+}
+
+
+
+
+5. Create StoreCategoryRequest.php Request:
+-------------------------------------------
+Command: php artisan make:request Admin/StoreCategoryRequest
+
+Edit app/Http/Request/Admin/StoreCategoryRequest.php:
+-----------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Admin;
+
+use App\Concerns\CategoryValidationRules;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
+
+class StoreCategoryRequest extends FormRequest
+{
+    use CategoryValidationRules;
+
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return $this->user()?->role === 'admin';
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return $this->categoryRules();
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        $slug = $this->input('slug');
+
+        $this->merge([
+            'slug' => filled($slug) ? Str::slug((string) $slug) : Str::slug((string) $this->input('name')),
+            'is_active' => $this->boolean('is_active'),
+        ]);
+    }
+}
+
+
+
+
+6. Create UpdateCategoryRequest.php Request:
+-------------------------------------------
+Command: php artisan make:request Admin/UpdateCategoryRequest
+
+Edit app/Http/Request/Admin/UpdateCategoryRequest.php:
+-----------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Admin;
+
+use App\Concerns\CategoryValidationRules;
+use App\Models\Category;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
+
+class UpdateCategoryRequest extends FormRequest
+{
+    use CategoryValidationRules;
+
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return $this->user()?->role === 'admin';
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        /** @var Category $category */
+        $category = $this->route('category');
+
+        return $this->categoryRules($category->id);
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        $slug = $this->input('slug');
+
+        $this->merge([
+            'slug' => filled($slug) ? Str::slug((string) $slug) : Str::slug((string) $this->input('name')),
+            'is_active' => $this->boolean('is_active'),
+        ]);
+    }
+}
+
+
+
+
+7. Create CategoryImageService.php:
+-----------------------------------
+Edit app/Services/CategoryImageService.php:
+-------------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Category;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+
+class CategoryImageService
+{
+    /**
+     * Resolve a stored image value to a public URL.
+     */
+    public function resolveUrl(?string $image): ?string
+    {
+        if (! filled($image)) {
+            return null;
+        }
+
+        if (filter_var($image, FILTER_VALIDATE_URL)) {
+            return $image;
+        }
+
+        // return Storage::disk('public')->url($image);
+        // disk('public') বাদ দিয়ে সরাসরি:
+        // add env: FILESYSTEM_DISK=public
+        return Storage::url($image);
+    }
+
+    /**
+     * Determine whether the image value refers to an uploaded file.
+     */
+    public function isUploadedPath(?string $image): bool
+    {
+        return filled($image) && ! filter_var($image, FILTER_VALIDATE_URL);
+    }
+
+    /**
+     * @return array{
+     *     image: string|null,
+     *     image_source: 'url'|'upload',
+     *     image_url: string
+     * }
+     */
+    public function payloadForCategory(Category $category): array
+    {
+        $isUploaded = $this->isUploadedPath($category->image);
+
+        return [
+            'image' => $this->resolveUrl($category->image),
+            'image_source' => $isUploaded ? 'upload' : 'url',
+            'image_url' => $isUploaded ? '' : ($category->image ?? ''),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function prepareForStorage(array $data, ?UploadedFile $uploadedFile = null, ?Category $existing = null): array
+    {
+        $source = $data['image_source'] ?? 'url';
+        unset($data['image_source']);
+
+        if ($source === 'upload') {
+            if ($uploadedFile !== null) {
+                $this->deleteIfUploaded($existing?->image);
+                $data['image'] = $uploadedFile->store('categories', 'public');
+            } elseif ($existing !== null) {
+                unset($data['image']);
+            } else {
+                $data['image'] = null;
+            }
+
+            return $data;
+        }
+
+        if ($existing !== null && $this->isUploadedPath($existing->image)) {
+            $this->deleteIfUploaded($existing->image);
+        }
+
+        $image = $data['image'] ?? null;
+        $data['image'] = filled($image) ? $image : null;
+
+        return $data;
+    }
+
+    /**
+     * Delete an uploaded category image from storage when no longer needed.
+     */
+    public function deleteIfUploaded(?string $image): void
+    {
+        if (! $this->isUploadedPath($image)) {
+            return;
+        }
+
+        Storage::disk('public')->delete($image);
+    }
+}
+
+
+
+
+8. Create Category Factory:
+---------------------------
+Command: php artisan make:factory CategoryFactory
+
+Edit database/factories/CategoryFactory.php:
+--------------------------------------------
+<?php
+
+namespace Database\Factories;
+
+use App\Models\Category;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
+
+/**
+ * @extends Factory<Category>
+ */
+class CategoryFactory extends Factory
+{
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        $name = fake()->unique()->words(2, true);
+
+        return [
+            'name' => Str::title($name),
+            'slug' => Str::slug($name),
+            'image' => fake()->optional()->imageUrl(400, 400),
+            'description' => fake()->optional()->sentence(),
+            'sort_order' => fake()->numberBetween(0, 20),
+            'is_active' => true,
+        ];
+    }
+
+    /**
+     * Indicate that the category is inactive.
+     */
+    public function inactive(): static
+    {
+        return $this->state(fn(array $attributes) => [
+            'is_active' => false,
+        ]);
+    }
+}
+
+
+
+
+9. Create admin.ts types:
+-------------------------
+Edit resources/js/types/admin.ts:
+---------------------------------
+export type CategoryImageSource = 'url' | 'upload';
+
+export type AdminCategory = {
+    id: number;
+    name: string;
+    slug: string;
+    image: string | null;
+    image_source: CategoryImageSource;
+    image_url: string;
+    description: string | null;
+    sort_order: number;
+    is_active: boolean;
+    products_count: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type CategoryFormData = {
+    name: string;
+    slug: string;
+    image_source: CategoryImageSource;
+    image: string;
+    image_file: File | null;
+    description: string;
+    sort_order: number;
+    is_active: boolean;
+};
+
+
+
+
+
+
+
+10. Create CategoryForm.vue Component:
+--------------------------------------
+Edit resources/js/components/admin/CategoryForm.vue:
+----------------------------------------------------
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import type { InertiaForm } from '@inertiajs/vue3';
+import InputError from '@/components/InputError.vue';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import type { AdminCategory, CategoryFormData } from '@/types/admin';
+
+type Props = {
+    form: InertiaForm<CategoryFormData>;
+    category?: AdminCategory;
+};
+
+const props = defineProps<Props>();
+
+const inputClass =
+    'border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-24 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
+
+const filePreviewUrl = ref<string | null>(null);
+
+const previewUrl = computed(() => {
+    if (props.form.image_source === 'upload' && filePreviewUrl.value) {
+        return filePreviewUrl.value;
+    }
+
+    if (props.form.image_source === 'url' && props.form.image) {
+        return props.form.image;
+    }
+
+    return props.category?.image ?? null;
+});
+
+watch(
+    () => props.form.image_file,
+    (file) => {
+        if (filePreviewUrl.value) {
+            URL.revokeObjectURL(filePreviewUrl.value);
+            filePreviewUrl.value = null;
+        }
+
+        if (file) {
+            filePreviewUrl.value = URL.createObjectURL(file);
+        }
+    },
+);
+
+onBeforeUnmount(() => {
+    if (filePreviewUrl.value) {
+        URL.revokeObjectURL(filePreviewUrl.value);
+    }
+});
+
+function onFileChange(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    props.form.image_file = target.files?.[0] ?? null;
+}
+
+function setImageSource(source: CategoryFormData['image_source']): void {
+    props.form.image_source = source;
+}
+</script>
+
+<template>
+    <div class="grid gap-6">
+        <div class="grid gap-2">
+            <Label for="name">Name</Label>
+            <Input id="name" v-model="form.name" required placeholder="Category name" />
+            <InputError :message="form.errors.name" />
+        </div>
+
+        <div class="grid gap-2">
+            <Label for="slug">Slug</Label>
+            <Input id="slug" v-model="form.slug" placeholder="category-slug" />
+            <p class="text-xs text-muted-foreground">
+                Leave blank to generate from the name.
+            </p>
+            <InputError :message="form.errors.slug" />
+        </div>
+
+        <div class="grid gap-4">
+            <div class="grid gap-2">
+                <Label>Image</Label>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" class="rounded-md border px-3 py-1.5 text-sm transition-colors" :class="form.image_source === 'url'
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-input bg-background hover:bg-muted'
+                        " @click="setImageSource('url')">
+                        Image URL
+                    </button>
+                    <button type="button" class="rounded-md border px-3 py-1.5 text-sm transition-colors" :class="form.image_source === 'upload'
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-input bg-background hover:bg-muted'
+                        " @click="setImageSource('upload')">
+                        Upload image
+                    </button>
+                </div>
+                <InputError :message="form.errors.image_source" />
+            </div>
+
+            <div v-if="form.image_source === 'url'" class="grid gap-2">
+                <Label for="image">Image URL</Label>
+                <Input id="image" v-model="form.image" type="url" placeholder="https://example.com/image.jpg" />
+                <InputError :message="form.errors.image" />
+            </div>
+
+            <div v-else class="grid gap-2">
+                <Label for="image_file">Upload file</Label>
+                <Input id="image_file" type="file" accept="image/jpeg,image/jpg,image/png,image/webp"
+                    @change="onFileChange" />
+                <p class="text-xs text-muted-foreground">
+                    JPG, PNG, or WebP up to 2 MB.
+                    <span v-if="category?.image_source === 'upload'">
+                        Leave empty to keep the current image.
+                    </span>
+                </p>
+                <InputError :message="form.errors.image_file" />
+            </div>
+
+            <div v-if="previewUrl" class="size-32 overflow-hidden rounded-lg border bg-muted">
+                <img :src="previewUrl" alt="Category image preview" class="size-full object-cover" />
+            </div>
+        </div>
+
+        <div class="grid gap-2">
+            <Label for="description">Description</Label>
+            <textarea id="description" v-model="form.description" rows="4" :class="inputClass"
+                placeholder="Short description for this category" />
+            <InputError :message="form.errors.description" />
+        </div>
+
+        <div class="grid gap-2 sm:max-w-xs">
+            <Label for="sort_order">Sort order</Label>
+            <Input id="sort_order" v-model.number="form.sort_order" type="number" min="0" required />
+            <InputError :message="form.errors.sort_order" />
+        </div>
+
+        <div class="flex items-center gap-3">
+            <input id="is_active" v-model="form.is_active" type="checkbox" class="size-4 rounded border border-input" />
+            <Label for="is_active" class="cursor-pointer font-normal">
+                Active
+            </Label>
+            <InputError :message="form.errors.is_active" />
+        </div>
+    </div>
+</template>
+
+
+
+
+
+11. Edit resources/js/app.ts:
+-----------------------------
+import { createInertiaApp } from '@inertiajs/vue3';
+import { initializeTheme } from '@/composables/useAppearance';
+import AppLayout from '@/layouts/AppLayout.vue';
+import AuthLayout from '@/layouts/AuthLayout.vue';
+import ShopLayout from '@/layouts/shop/ShopLayout.vue';
+import SettingsLayout from '@/layouts/settings/Layout.vue';
+import { initializeFlashToast } from '@/lib/flashToast';
+
+const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+
+createInertiaApp({
+    title: (title) => (title ? `${title} - ${appName}` : appName),
+    layout: (name) => {
+        switch (true) {
+            case name === 'Welcome':
+                return null;
+            case name.startsWith('shop/'):
+                return ShopLayout;
+            case name.startsWith('auth/'):
+                return AuthLayout;
+            case name.startsWith('settings/'):
+                return [AppLayout, SettingsLayout];
+            case name.startsWith('admin/'):
+                return AppLayout;
+            default:
+                return AppLayout;
+        }
+    },
+    progress: {
+        color: '#4B5563',
+    },
+});
+
+// This will set light / dark mode on page load...
+initializeTheme();
+
+// This will listen for flash toast data from the server...
+initializeFlashToast();
+
+
+
+
+
+12. Edit resources/js/components/AppSidebar.vue:
+------------------------------------------------
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { BookOpen, FolderGit2, LayoutGrid, Tags } from '@lucide/vue';
+import AppLogo from '@/components/AppLogo.vue';
+import NavFooter from '@/components/NavFooter.vue';
+import NavMain from '@/components/NavMain.vue';
+import NavUser from '@/components/NavUser.vue';
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { dashboard } from '@/routes';
+import { index as categoriesIndex } from '@/routes/admin/categories';
+import type { NavItem } from '@/types';
+
+const mainNavItems: NavItem[] = [
+    {
+        title: 'Dashboard',
+        href: dashboard(),
+        icon: LayoutGrid,
+    },
+    {
+        title: 'Categories',
+        href: categoriesIndex(),
+        icon: Tags,
+    },
+];
+
+const footerNavItems: NavItem[] = [
+    {
+        title: 'Repository',
+        href: 'https://github.com/laravel/vue-starter-kit',
+        icon: FolderGit2,
+    },
+    {
+        title: 'Documentation',
+        href: 'https://laravel.com/docs/starter-kits#vue',
+        icon: BookOpen,
+    },
+];
+</script>
+
+<template>
+    <Sidebar collapsible="icon" variant="inset">
+        <SidebarHeader>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton size="lg" as-child>
+                        <Link :href="dashboard()">
+                            <AppLogo />
+                        </Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent>
+            <NavMain :items="mainNavItems" />
+        </SidebarContent>
+
+        <SidebarFooter>
+            <NavFooter :items="footerNavItems" />
+            <NavUser />
+        </SidebarFooter>
+    </Sidebar>
+    <slot />
+</template>
+
+
+
+
+13. Create Index.vue, Create.vue, Edit.vue, Show.vue Pages:
+-----------------------------------------------------------
+
+
+13.1 Edit resources/js/pages/admin/categories/Index.vue:
+--------------------------------------------------------
+<script setup lang="ts">
+import { Form, Head, Link } from '@inertiajs/vue3';
+import { Eye, Pencil, Plus, Trash2 } from '@lucide/vue';
+import CategoryController from '@/actions/App/Http/Controllers/Admin/CategoryController';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { dashboard } from '@/routes';
+import { create, edit, index, show } from '@/routes/admin/categories';
+import type { AdminCategory } from '@/types/admin';
+
+defineProps<{
+    categories: AdminCategory[];
+}>();
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
+            {
+                title: 'Categories',
+                href: index(),
+            },
+        ],
+    },
+});
+</script>
+
+<template>
+
+    <Head title="Categories" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <Heading title="Categories" description="Manage product categories for your store" />
+
+            <Button as-child>
+                <Link :href="create()">
+                    <Plus class="size-4" />
+                    Add category
+                </Link>
+            </Button>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[960px] text-sm">
+                    <thead class="border-b bg-muted/40 text-left">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Image</th>
+                            <th class="px-4 py-3 font-medium">Name</th>
+                            <th class="px-4 py-3 font-medium">Slug</th>
+                            <th class="px-4 py-3 font-medium">Products</th>
+                            <th class="px-4 py-3 font-medium">Sort</th>
+                            <th class="px-4 py-3 font-medium">Status</th>
+                            <th class="px-4 py-3 text-right font-medium">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="category in categories" :key="category.id" class="border-b last:border-b-0">
+                            <td class="px-4 py-3">
+                                <div class="size-12 overflow-hidden rounded-md border bg-muted">
+                                    <img v-if="category.image" :src="category.image" :alt="category.name"
+                                        class="size-full object-cover" />
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 font-medium">
+                                {{ category.name }}
+                            </td>
+                            <td class="px-4 py-3 text-muted-foreground">
+                                {{ category.slug }}
+                            </td>
+                            <td class="px-4 py-3">
+                                {{ category.products_count }}
+                            </td>
+                            <td class="px-4 py-3">
+                                {{ category.sort_order }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <Badge :variant="category.is_active
+                                        ? 'default'
+                                        : 'secondary'
+                                    ">
+                                    {{
+                                        category.is_active
+                                            ? 'Active'
+                                            : 'Inactive'
+                                    }}
+                                </Badge>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-2">
+                                    <Button as-child variant="outline" size="sm">
+                                        <Link :href="show(category.id)">
+                                            <Eye class="size-4" />
+                                            View
+                                        </Link>
+                                    </Button>
+                                    <Button as-child variant="outline" size="sm">
+                                        <Link :href="edit(category.id)">
+                                            <Pencil class="size-4" />
+                                            Edit
+                                        </Link>
+                                    </Button>
+                                    <Dialog>
+                                        <DialogTrigger as-child>
+                                            <Button variant="destructive" size="sm"
+                                                :data-test="`delete-category-${category.id}`">
+                                                <Trash2 class="size-4" />
+                                                Delete
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <Form v-bind="CategoryController.destroy.form(
+                                                category.id,
+                                            )
+                                                " :options="{
+                                                    preserveScroll: true,
+                                                }" v-slot="{ processing }">
+                                                <DialogHeader class="space-y-3">
+                                                    <DialogTitle>
+                                                        Delete category?
+                                                    </DialogTitle>
+                                                    <DialogDescription>
+                                                        This will remove
+                                                        <strong>{{
+                                                            category.name
+                                                            }}</strong>
+                                                        from your store. This
+                                                        action can be undone
+                                                        from the database if
+                                                        needed.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+
+                                                <DialogFooter class="gap-2">
+                                                    <DialogClose as-child>
+                                                        <Button type="button" variant="secondary">
+                                                            Cancel
+                                                        </Button>
+                                                    </DialogClose>
+                                                    <Button type="submit" variant="destructive" :disabled="processing"
+                                                        :data-test="`confirm-delete-category-${category.id}`">
+                                                        Delete
+                                                    </Button>
+                                                </DialogFooter>
+                                            </Form>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr v-if="categories.length === 0">
+                            <td colspan="7" class="px-4 py-10 text-center text-muted-foreground">
+                                No categories yet. Create your first category.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+13.2 Edit resources/js/pages/admin/categories/Create.vue:
+--------------------------------------------------------
+<script setup lang="ts">
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import CategoryController from '@/actions/App/Http/Controllers/Admin/CategoryController';
+import CategoryForm from '@/components/admin/CategoryForm.vue';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { dashboard } from '@/routes';
+import { create, index } from '@/routes/admin/categories';
+import type { CategoryFormData } from '@/types/admin';
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
+            {
+                title: 'Categories',
+                href: index(),
+            },
+            {
+                title: 'Create',
+                href: create(),
+            },
+        ],
+    },
+});
+
+const form = useForm<CategoryFormData>({
+    name: '',
+    slug: '',
+    image_source: 'url',
+    image: '',
+    image_file: null,
+    description: '',
+    sort_order: 0,
+    is_active: true,
+});
+
+function submit(): void {
+    form.post(CategoryController.store.url(), {
+        forceFormData: true,
+        preserveScroll: true,
+    });
+}
+</script>
+
+<template>
+
+    <Head title="Create category" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <Heading title="Create category" description="Add a new product category to your store" />
+
+        <div class="max-w-2xl rounded-xl border border-sidebar-border/70 p-6 dark:border-sidebar-border">
+            <form class="space-y-6" @submit.prevent="submit">
+                <CategoryForm :form="form" />
+
+                <div class="flex items-center gap-3">
+                    <Button type="submit" :disabled="form.processing">
+                        Create category
+                    </Button>
+                    <Button as-child variant="outline">
+                        <Link :href="index()">Cancel</Link>
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+13.3 Edit resources/js/pages/admin/categories/Edit.vue:
+--------------------------------------------------------
+<script setup lang="ts">
+import { Head, Link, setLayoutProps, useForm } from '@inertiajs/vue3';
+import CategoryController from '@/actions/App/Http/Controllers/Admin/CategoryController';
+import CategoryForm from '@/components/admin/CategoryForm.vue';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { dashboard } from '@/routes';
+import { edit, index } from '@/routes/admin/categories';
+import type { AdminCategory, CategoryFormData } from '@/types/admin';
+
+const props = defineProps<{
+    category: AdminCategory;
+}>();
+
+setLayoutProps({
+    breadcrumbs: [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+        },
+        {
+            title: 'Categories',
+            href: index(),
+        },
+        {
+            title: `Edit ${props.category.name}`,
+            href: edit(props.category.id),
+        },
+    ],
+});
+
+const form = useForm<CategoryFormData>({
+    name: props.category.name,
+    slug: props.category.slug,
+    image_source: props.category.image_source,
+    image: props.category.image_url,
+    image_file: null,
+    description: props.category.description ?? '',
+    sort_order: props.category.sort_order,
+    is_active: props.category.is_active,
+});
+
+function submit(): void {
+    form
+        .transform((data) => ({
+            ...data,
+            _method: 'put',
+        }))
+        .post(CategoryController.update.url(props.category.id), {
+            forceFormData: true,
+            preserveScroll: true,
+        });
+}
+</script>
+
+<template>
+
+    <Head :title="`Edit ${category.name}`" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <Heading :title="`Edit ${category.name}`" description="Update category details" />
+
+        <div class="max-w-2xl rounded-xl border border-sidebar-border/70 p-6 dark:border-sidebar-border">
+            <form class="space-y-6" @submit.prevent="submit">
+                <CategoryForm :form="form" :category="category" />
+
+                <div class="flex items-center gap-3">
+                    <Button type="submit" :disabled="form.processing">
+                        Save changes
+                    </Button>
+                    <Button as-child variant="outline">
+                        <Link :href="index()">Cancel</Link>
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+13.4 Edit resources/js/pages/admin/categories/Show.vue:
+--------------------------------------------------------
+<script setup lang="ts">
+import { Head, Link, setLayoutProps } from '@inertiajs/vue3';
+import { Pencil } from '@lucide/vue';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { dashboard } from '@/routes';
+import { edit, index, show } from '@/routes/admin/categories';
+import type { AdminCategory } from '@/types/admin';
+
+const props = defineProps<{
+    category: AdminCategory;
+}>();
+
+setLayoutProps({
+    breadcrumbs: [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+        },
+        {
+            title: 'Categories',
+            href: index(),
+        },
+        {
+            title: props.category.name,
+            href: show(props.category.id),
+        },
+    ],
+});
+</script>
+
+<template>
+
+    <Head :title="category.name" />
+
+    <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <Heading :title="category.name" description="Category details" />
+
+            <Button as-child>
+                <Link :href="edit(category.id)">
+                    <Pencil class="size-4" />
+                    Edit category
+                </Link>
+            </Button>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-[320px_1fr]">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Image</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div class="aspect-square overflow-hidden rounded-lg border bg-muted">
+                        <img v-if="category.image" :src="category.image" :alt="category.name"
+                            class="size-full object-cover" />
+                        <div v-else class="flex size-full items-center justify-center text-sm text-muted-foreground">
+                            No image
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Details</CardTitle>
+                    <CardDescription>
+                        Overview of this category
+                    </CardDescription>
+                </CardHeader>
+                <CardContent class="grid gap-4">
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">Slug</p>
+                        <p class="font-medium">{{ category.slug }}</p>
+                    </div>
+
+                    <div class="grid gap-1">
+                        <p class="text-sm text-muted-foreground">
+                            Description
+                        </p>
+                        <p class="font-medium">
+                            {{
+                                category.description ||
+                                'No description provided.'
+                            }}
+                        </p>
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">
+                                Products
+                            </p>
+                            <p class="font-medium">
+                                {{ category.products_count }}
+                            </p>
+                        </div>
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">
+                                Sort order
+                            </p>
+                            <p class="font-medium">
+                                {{ category.sort_order }}
+                            </p>
+                        </div>
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">Status</p>
+                            <Badge :variant="category.is_active
+                                    ? 'default'
+                                    : 'secondary'
+                                ">
+                                {{
+                                    category.is_active ? 'Active' : 'Inactive'
+                                }}
+                            </Badge>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">
+                                Created
+                            </p>
+                            <p class="font-medium">
+                                {{
+                                    new Date(
+                                        category.created_at,
+                                    ).toLocaleString()
+                                }}
+                            </p>
+                        </div>
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">
+                                Updated
+                            </p>
+                            <p class="font-medium">
+                                {{
+                                    new Date(
+                                        category.updated_at,
+                                    ).toLocaleString()
+                                }}
+                            </p>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    </div>
+</template>
+
+
+
+
+14. Create index.ts Route:
+--------------------------
+Edit resources/js/routes/admin/categories/index.ts:
+---------------------------------------------------
+import { queryParams, type RouteQueryOptions, type RouteDefinition, type RouteFormDefinition, applyUrlDefaults } from './../../../wayfinder'
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+export const index = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: index.url(options),
+    method: 'get',
+})
+
+index.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+index.url = (options?: RouteQueryOptions) => {
+    return index.definition.url + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+index.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: index.url(options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: index.url(options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+    const indexForm = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: index.url(options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+        indexForm.get = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: index.url(options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+        indexForm.head = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: index.url({
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    index.form = indexForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+export const create = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: create.url(options),
+    method: 'get',
+})
+
+create.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories/create',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+create.url = (options?: RouteQueryOptions) => {
+    return create.definition.url + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+create.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: create.url(options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+create.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: create.url(options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+    const createForm = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: create.url(options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+        createForm.get = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: create.url(options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+        createForm.head = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: create.url({
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    create.form = createForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+export const store = (options?: RouteQueryOptions): RouteDefinition<'post'> => ({
+    url: store.url(options),
+    method: 'post',
+})
+
+store.definition = {
+    methods: ["post"],
+    url: '/admin/categories',
+} satisfies RouteDefinition<["post"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+store.url = (options?: RouteQueryOptions) => {
+    return store.definition.url + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+store.post = (options?: RouteQueryOptions): RouteDefinition<'post'> => ({
+    url: store.url(options),
+    method: 'post',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+    const storeForm = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+        action: store.url(options),
+        method: 'post',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+        storeForm.post = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: store.url(options),
+            method: 'post',
+        })
+    
+    store.form = storeForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+export const show = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: show.url(args, options),
+    method: 'get',
+})
+
+show.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories/{category}',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+show.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return show.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+show.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: show.url(args, options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+show.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: show.url(args, options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+    const showForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: show.url(args, options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+        showForm.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: show.url(args, options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+        showForm.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: show.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    show.form = showForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+export const edit = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: edit.url(args, options),
+    method: 'get',
+})
+
+edit.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories/{category}/edit',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+edit.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return edit.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+edit.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: edit.url(args, options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+edit.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: edit.url(args, options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+    const editForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: edit.url(args, options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+        editForm.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: edit.url(args, options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+        editForm.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: edit.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    edit.form = editForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+export const update = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'put'> => ({
+    url: update.url(args, options),
+    method: 'put',
+})
+
+update.definition = {
+    methods: ["put","patch"],
+    url: '/admin/categories/{category}',
+} satisfies RouteDefinition<["put","patch"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+update.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return update.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+update.put = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'put'> => ({
+    url: update.url(args, options),
+    method: 'put',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+update.patch = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'patch'> => ({
+    url: update.url(args, options),
+    method: 'patch',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+    const updateForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+        action: update.url(args, {
+                    [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                        _method: 'PUT',
+                        ...(options?.query ?? options?.mergeQuery ?? {}),
+                    }
+                }),
+        method: 'post',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+        updateForm.put = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: update.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'PUT',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+        updateForm.patch = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: update.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'PATCH',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+    
+    update.form = updateForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+export const destroy = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'delete'> => ({
+    url: destroy.url(args, options),
+    method: 'delete',
+})
+
+destroy.definition = {
+    methods: ["delete"],
+    url: '/admin/categories/{category}',
+} satisfies RouteDefinition<["delete"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+destroy.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return destroy.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+destroy.delete = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'delete'> => ({
+    url: destroy.url(args, options),
+    method: 'delete',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+    const destroyForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+        action: destroy.url(args, {
+                    [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                        _method: 'DELETE',
+                        ...(options?.query ?? options?.mergeQuery ?? {}),
+                    }
+                }),
+        method: 'post',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+        destroyForm.delete = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: destroy.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'DELETE',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+    
+    destroy.form = destroyForm
+const categories = {
+    index: Object.assign(index, index),
+create: Object.assign(create, create),
+store: Object.assign(store, store),
+show: Object.assign(show, show),
+edit: Object.assign(edit, edit),
+update: Object.assign(update, update),
+destroy: Object.assign(destroy, destroy),
+}
+
+export default categories
+
+
+
+
+15. Create CategoryController.ts:
+--------------------------------
+Edit resources/js/actions/App/Http/Controllers/Admin/CategoryControllers.ts:
+-----------------------------------------------------------------------------
+import { queryParams, type RouteQueryOptions, type RouteDefinition, type RouteFormDefinition, applyUrlDefaults } from './../../../../../wayfinder'
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+export const index = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: index.url(options),
+    method: 'get',
+})
+
+index.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+index.url = (options?: RouteQueryOptions) => {
+    return index.definition.url + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+index.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: index.url(options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: index.url(options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+    const indexForm = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: index.url(options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+        indexForm.get = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: index.url(options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::index
+ * @see app/Http/Controllers/Admin/CategoryController.php:23
+ * @route '/admin/categories'
+ */
+        indexForm.head = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: index.url({
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    index.form = indexForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+export const create = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: create.url(options),
+    method: 'get',
+})
+
+create.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories/create',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+create.url = (options?: RouteQueryOptions) => {
+    return create.definition.url + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+create.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: create.url(options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+create.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: create.url(options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+    const createForm = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: create.url(options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+        createForm.get = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: create.url(options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::create
+ * @see app/Http/Controllers/Admin/CategoryController.php:40
+ * @route '/admin/categories/create'
+ */
+        createForm.head = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: create.url({
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    create.form = createForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+export const store = (options?: RouteQueryOptions): RouteDefinition<'post'> => ({
+    url: store.url(options),
+    method: 'post',
+})
+
+store.definition = {
+    methods: ["post"],
+    url: '/admin/categories',
+} satisfies RouteDefinition<["post"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+store.url = (options?: RouteQueryOptions) => {
+    return store.definition.url + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+store.post = (options?: RouteQueryOptions): RouteDefinition<'post'> => ({
+    url: store.url(options),
+    method: 'post',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+    const storeForm = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+        action: store.url(options),
+        method: 'post',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::store
+ * @see app/Http/Controllers/Admin/CategoryController.php:48
+ * @route '/admin/categories'
+ */
+        storeForm.post = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: store.url(options),
+            method: 'post',
+        })
+    
+    store.form = storeForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+export const show = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: show.url(args, options),
+    method: 'get',
+})
+
+show.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories/{category}',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+show.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return show.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+show.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: show.url(args, options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+show.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: show.url(args, options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+    const showForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: show.url(args, options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+        showForm.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: show.url(args, options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::show
+ * @see app/Http/Controllers/Admin/CategoryController.php:65
+ * @route '/admin/categories/{category}'
+ */
+        showForm.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: show.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    show.form = showForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+export const edit = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: edit.url(args, options),
+    method: 'get',
+})
+
+edit.definition = {
+    methods: ["get","head"],
+    url: '/admin/categories/{category}/edit',
+} satisfies RouteDefinition<["get","head"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+edit.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return edit.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+edit.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'get'> => ({
+    url: edit.url(args, options),
+    method: 'get',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+edit.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'head'> => ({
+    url: edit.url(args, options),
+    method: 'head',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+    const editForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+        action: edit.url(args, options),
+        method: 'get',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+        editForm.get = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: edit.url(args, options),
+            method: 'get',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::edit
+ * @see app/Http/Controllers/Admin/CategoryController.php:77
+ * @route '/admin/categories/{category}/edit'
+ */
+        editForm.head = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
+            action: edit.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'HEAD',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'get',
+        })
+    
+    edit.form = editForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+export const update = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'put'> => ({
+    url: update.url(args, options),
+    method: 'put',
+})
+
+update.definition = {
+    methods: ["put","patch"],
+    url: '/admin/categories/{category}',
+} satisfies RouteDefinition<["put","patch"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+update.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return update.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+update.put = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'put'> => ({
+    url: update.url(args, options),
+    method: 'put',
+})
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+update.patch = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'patch'> => ({
+    url: update.url(args, options),
+    method: 'patch',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+    const updateForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+        action: update.url(args, {
+                    [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                        _method: 'PUT',
+                        ...(options?.query ?? options?.mergeQuery ?? {}),
+                    }
+                }),
+        method: 'post',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+        updateForm.put = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: update.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'PUT',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::update
+ * @see app/Http/Controllers/Admin/CategoryController.php:87
+ * @route '/admin/categories/{category}'
+ */
+        updateForm.patch = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: update.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'PATCH',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+    
+    update.form = updateForm
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+export const destroy = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'delete'> => ({
+    url: destroy.url(args, options),
+    method: 'delete',
+})
+
+destroy.definition = {
+    methods: ["delete"],
+    url: '/admin/categories/{category}',
+} satisfies RouteDefinition<["delete"]>
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+destroy.url = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
+    if (typeof args === 'string' || typeof args === 'number') {
+        args = { category: args }
+    }
+
+            if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
+            args = { category: args.id }
+        }
+    
+    if (Array.isArray(args)) {
+        args = {
+                    category: args[0],
+                }
+    }
+
+    args = applyUrlDefaults(args)
+
+    const parsedArgs = {
+                        category: typeof args.category === 'object'
+                ? args.category.id
+                : args.category,
+                }
+
+    return destroy.definition.url
+            .replace('{category}', parsedArgs.category.toString())
+            .replace(/\/+$/, '') + queryParams(options)
+}
+
+/**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+destroy.delete = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'delete'> => ({
+    url: destroy.url(args, options),
+    method: 'delete',
+})
+
+    /**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+    const destroyForm = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+        action: destroy.url(args, {
+                    [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                        _method: 'DELETE',
+                        ...(options?.query ?? options?.mergeQuery ?? {}),
+                    }
+                }),
+        method: 'post',
+    })
+
+            /**
+* @see \App\Http\Controllers\Admin\CategoryController::destroy
+ * @see app/Http/Controllers/Admin/CategoryController.php:105
+ * @route '/admin/categories/{category}'
+ */
+        destroyForm.delete = (args: { category: number | { id: number } } | [category: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
+            action: destroy.url(args, {
+                        [options?.mergeQuery ? 'mergeQuery' : 'query']: {
+                            _method: 'DELETE',
+                            ...(options?.query ?? options?.mergeQuery ?? {}),
+                        }
+                    }),
+            method: 'post',
+        })
+    
+    destroy.form = destroyForm
+const CategoryController = { index, create, store, show, edit, update, destroy }
+
+export default CategoryController
+
+
+
+
+16. Edit bootsratp/app.php:
+------------------------------
+<?php
+
+use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\HandleAppearance;
+use App\Http\Middleware\HandleInertiaRequests;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__ . '/../routes/web.php',
+        commands: __DIR__ . '/../routes/console.php',
+        health: '/up',
+        then: function () {
+            Route::middleware('web')
+                ->group(__DIR__ . '/../routes/admin.php');
+        },
+    )
+    ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->alias([
+            'admin' => EnsureUserIsAdmin::class,
+        ]);
+
+        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        $middleware->web(append: [
+            HandleAppearance::class,
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
+        ]);
+    })
+    ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(
+            fn(Request $request) => $request->is('api/*'),
+        );
+    })->create();
+
+
