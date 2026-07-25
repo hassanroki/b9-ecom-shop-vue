@@ -18,6 +18,7 @@ import { dashboard } from '@/routes';
 import { index as categoriesIndex } from '@/routes/admin/categories';
 import { index as ordersIndex } from '@/routes/admin/orders';
 import { index as productsIndex } from '@/routes/admin/products';
+import { index as wishlistsIndex } from '@/routes/admin/wishlists';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -40,6 +41,11 @@ const mainNavItems: NavItem[] = [
         title: 'Orders',
         href: ordersIndex(),
         icon: ShoppingCart,
+    },
+    {
+        title: 'Wishlists',
+        href: wishlistsIndex(),
+        icon: Heart,
     },
 ];
 

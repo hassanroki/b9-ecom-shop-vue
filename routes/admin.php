@@ -13,4 +13,5 @@ Route::middleware(['auth', 'verified', 'admin'])
         Route::resource('categories', CategoryController::class);
         Route::resource('products', ProductController::class);
         Route::resource('orders', OrderController::class)->only(['index', 'show', 'update']);
+        Route::resource('wishlists', WishlistController::class)->only(['index']);
     });
