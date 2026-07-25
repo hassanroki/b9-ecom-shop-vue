@@ -1,0 +1,40 @@
+10. Laravel E-commerce Admin Dashboard:
+---------------------------------------
+1. Create DashboardController.php Controller:
+---------------------------------------------
+Command: php artisan make:controller Admin/DashboardController
+
+Edit app/Http/Controllers/Admin/DashboardController.php:
+--------------------------------------------------------
+
+
+
+
+2. Create DashboardRevenueChart.vue Components:
+-----------------------------------------------
+Edit resources/js/components/admin/DashboardRevenueChart.vue:
+--------------------------------------------------------------
+
+
+
+3. Create DashboardStatCard.vue Components:
+-----------------------------------------------
+Edit resources/js/components/admin/DashboardStatCard.vue:
+---------------------------------------------------------
+
+
+4. Edit resources/js/types/admin.ts:
+------------------------------------
+
+
+
+5. Create Index.vue Page for Dashboard:
+---------------------------------------
+Edit resources/js/pages/admin/dashboard/Index.vue:
+---------------------------------------------------
+
+
+
+6. Edit Routes/web.php:
+-----------------------
+

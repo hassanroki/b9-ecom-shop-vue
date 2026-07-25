@@ -42,6 +42,44 @@ class OrderService
      */
     public function placeCodOrder(array $shipping): Order
     {
+        return $this->placeOrder($shipping, 'cod', 'Order placed via Cash on Delivery.');
+    }
+
+    /**
+     * Place an SSLCommerz order from the current cart.
+     *
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    public function placeSslcommerzOrder(array $shipping): Order
+    {
+        return $this->placeOrder($shipping, 'sslcommerz', 'Order placed via SSLCommerz. Awaiting online payment.');
+    }
+
+    /**
+     * @param  array{
+     *     customer_name: string,
+     *     phone: string,
+     *     email: string,
+     *     district: string,
+     *     area: string,
+     *     address: string,
+     *     notes?: string|null,
+     * }  $shipping
+     *
+     * @throws ValidationException
+     */
+    private function placeOrder(array $shipping, string $paymentMethod, string $statusNote): Order
+    {
         $items = $this->cartService->items();
 
         if ($items === []) {
@@ -65,7 +103,7 @@ class OrderService
         $deliveryCharge = $this->deliveryChargeForDistrict($shipping['district']);
         $total = $subtotal + $deliveryCharge;
 
-        return DB::transaction(function () use ($shipping, $items, $subtotal, $deliveryCharge, $total): Order {
+        return DB::transaction(function () use ($shipping, $items, $subtotal, $deliveryCharge, $total, $paymentMethod, $statusNote): Order {
             $order = Order::create([
                 'order_number' => $this->generateOrderNumber(),
                 'user_id' => Auth::id(),
@@ -79,7 +117,7 @@ class OrderService
                 'subtotal' => $subtotal,
                 'delivery_charge' => $deliveryCharge,
                 'total' => $total,
-                'payment_method' => 'cod',
+                'payment_method' => $paymentMethod,
                 'payment_status' => 'pending',
                 'status' => 'pending',
                 'placed_at' => now(),
@@ -100,7 +138,7 @@ class OrderService
             OrderStatusHistory::create([
                 'order_id' => $order->id,
                 'status' => 'pending',
-                'note' => 'Order placed via Cash on Delivery.',
+                'note' => $statusNote,
                 'changed_by' => Auth::id(),
             ]);
 

@@ -1,0 +1,2683 @@
+9. Laravel E-commerce SSL-Commerz:
+----------------------------------
+1. Install Package Command: 
+composer require hasinhayder/sslcommerz-laravel
+
+Then VS Code Command:
+We have to integrate ssl commerz , use this package for the integration: https://github.com/hasinhayder/sslcommerz-laravel 
+alrrady we have a payment table but you may add or modify or remove column if required. at first no need to integrate this with the storefront. make the api first, no need auth for api as we will test this later we will go for the stroefront entegration.
+Here is the store info for sandbox: Store  
+Store ID: tasku6a5766d3d7f27
+Store Password (API/Secret Key): tasku6a5766d3d7f27@ssl
+and make a postman collection for the payment api testing.
+
+already apply my another project bellow link:
+https://github.com/sobujsoft/b9-ecom-shop/tree/feat/ssl-in-tegrate
+
+
+Manually Work:
+--------------
+1. Create Api PaymentController.php Controller:
+Command: php artisan make:controller Api/PaymentController
+
+Edit app/Http/Controllers/Api/PaymentController.php:
+----------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\InitiatePaymentRequest;
+use App\Http\Requests\Api\RefundPaymentRequest;
+use App\Models\Order;
+use App\Models\Payment;
+use App\Services\SslcommerzPaymentService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class PaymentController extends Controller
+{
+    public function __construct(
+        private readonly SslcommerzPaymentService $paymentService,
+    ) {}
+
+    /**
+     * Initiate an SSLCommerz payment for an order.
+     */
+    public function initiate(InitiatePaymentRequest $request): JsonResponse
+    {
+        $order = Order::query()->findOrFail($request->integer('order_id'));
+
+        $result = $this->paymentService->initiate($order);
+
+        return response()->json([
+            'message' => 'Payment initiated successfully.',
+            'data' => $this->paymentResource($result['payment'], $result['gateway_url']),
+        ], 201);
+    }
+
+    /**
+     * Show a payment record.
+     */
+    public function show(Payment $payment): JsonResponse
+    {
+        $payment->load('order:id,order_number,payment_status,total');
+
+        return response()->json([
+            'data' => $this->paymentResource($payment),
+        ]);
+    }
+
+    /**
+     * Refund a successful payment.
+     */
+    public function refund(RefundPaymentRequest $request, Payment $payment): JsonResponse
+    {
+        $response = $this->paymentService->refund(
+            $payment,
+            (float) $request->input('amount'),
+            (string) $request->input('reason'),
+        );
+
+        return response()->json([
+            'message' => 'Refund request submitted.',
+            'data' => $response->toArray(),
+        ]);
+    }
+
+    /**
+     * Check refund status by refund reference id.
+     */
+    public function refundStatus(Request $request): JsonResponse
+    {
+        $request->validate([
+            'refund_ref_id' => ['required', 'string', 'max:100'],
+        ]);
+
+        $status = $this->paymentService->refundStatus((string) $request->input('refund_ref_id'));
+
+        return response()->json([
+            'data' => $status->toArray(),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentResource(Payment $payment, ?string $gatewayUrl = null): array
+    {
+        return [
+            'id' => $payment->id,
+            'order_id' => $payment->order_id,
+            'order' => $payment->relationLoaded('order') ? [
+                'id' => $payment->order?->id,
+                'order_number' => $payment->order?->order_number,
+                'payment_status' => $payment->order?->payment_status,
+                'total' => $payment->order !== null ? (float) $payment->order->total : null,
+            ] : null,
+            'gateway' => $payment->gateway,
+            'transaction_id' => $payment->transaction_id,
+            'val_id' => $payment->val_id,
+            'amount' => (float) $payment->amount,
+            'currency' => $payment->currency,
+            'status' => $payment->status,
+            'card_type' => $payment->card_type,
+            'bank_tran_id' => $payment->bank_tran_id,
+            'store_amount' => $payment->store_amount !== null ? (float) $payment->store_amount : null,
+            'paid_at' => $payment->paid_at?->toIso8601String(),
+            'gateway_url' => $gatewayUrl,
+            'created_at' => $payment->created_at?->toIso8601String(),
+            'updated_at' => $payment->updated_at?->toIso8601String(),
+        ];
+    }
+}
+
+
+
+
+
+
+2. Create Api SslcommerzCallbackController.php Controller:
+Command: php artisan make:controller Api/SslcommerzCallbackController
+
+Edit app/Http/Controllers/Api/SslcommerzCallbackController.php:
+---------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\SslcommerzPaymentService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class SslcommerzCallbackController extends Controller
+{
+    public function __construct(
+        private readonly SslcommerzPaymentService $paymentService,
+    ) {}
+
+    /**
+     * Handle SSLCommerz success callback.
+     */
+    public function success(Request $request): JsonResponse
+    {
+        $payment = $this->paymentService->handleSuccessfulCallback($request->all());
+
+        return response()->json([
+            'message' => 'Payment completed successfully.',
+            'data' => [
+                'payment_id' => $payment->id,
+                'transaction_id' => $payment->transaction_id,
+                'status' => $payment->status,
+                'order_payment_status' => $payment->order?->payment_status,
+            ],
+        ]);
+    }
+
+    /**
+     * Handle SSLCommerz failure callback.
+     */
+    public function failure(Request $request): JsonResponse
+    {
+        $payment = $this->paymentService->handleFailedCallback($request->all());
+
+        return response()->json([
+            'message' => 'Payment failed.',
+            'data' => [
+                'payment_id' => $payment->id,
+                'transaction_id' => $payment->transaction_id,
+                'status' => $payment->status,
+                'order_payment_status' => $payment->order?->payment_status,
+            ],
+        ]);
+    }
+
+    /**
+     * Handle SSLCommerz cancel callback.
+     */
+    public function cancel(Request $request): JsonResponse
+    {
+        $payment = $this->paymentService->handleCancelledCallback($request->all());
+
+        return response()->json([
+            'message' => 'Payment cancelled.',
+            'data' => [
+                'payment_id' => $payment->id,
+                'transaction_id' => $payment->transaction_id,
+                'status' => $payment->status,
+                'order_payment_status' => $payment->order?->payment_status,
+            ],
+        ]);
+    }
+
+    /**
+     * Handle SSLCommerz IPN callback.
+     */
+    public function ipn(Request $request): JsonResponse
+    {
+        $payment = $this->paymentService->handleSuccessfulCallback($request->all());
+
+        return response()->json([
+            'message' => 'IPN processed successfully.',
+            'data' => [
+                'payment_id' => $payment->id,
+                'transaction_id' => $payment->transaction_id,
+                'status' => $payment->status,
+                'order_payment_status' => $payment->order?->payment_status,
+            ],
+        ]);
+    }
+}
+
+
+
+
+
+
+3. Create InitiatePaymentRequest.php Request:
+---------------------------------------------
+Edit app/Http/Requests/Api/InitiatePaymentRequest.php:
+------------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Api;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class InitiatePaymentRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public function rules(): array
+    {
+        return [
+            'order_id' => ['required', 'integer', 'exists:orders,id'],
+        ];
+    }
+}
+
+
+
+
+
+
+
+4. Create RefundPaymentRequest.php Request:
+-------------------------------------------
+Edit app/Http/Requests/Api/RefundPaymentRequest.php:
+----------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Api;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class RefundPaymentRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public function rules(): array
+    {
+        return [
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'reason' => ['required', 'string', 'max:255'],
+        ];
+    }
+}
+
+
+
+
+
+
+
+
+5. Create api.php route
+-----------------------
+Edit routes/api.php:
+--------------------
+<?php
+
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\SslcommerzCallbackController;
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('payments')->name('api.payments.')->group(function (): void {
+    Route::post('initiate', [PaymentController::class, 'initiate'])->name('initiate');
+    Route::get('refund-status', [PaymentController::class, 'refundStatus'])->name('refund-status');
+
+    Route::prefix('sslcommerz')->name('sslcommerz.')->group(function (): void {
+        Route::post('success', [SslcommerzCallbackController::class, 'success'])->name('success');
+        Route::post('failure', [SslcommerzCallbackController::class, 'failure'])->name('failure');
+        Route::post('cancel', [SslcommerzCallbackController::class, 'cancel'])->name('cancel');
+        Route::post('ipn', [SslcommerzCallbackController::class, 'ipn'])->name('ipn');
+    });
+
+    Route::get('{payment}', [PaymentController::class, 'show'])->name('show');
+    Route::post('{payment}/refund', [PaymentController::class, 'refund'])->name('refund');
+});
+
+
+
+
+
+
+6. Edit Checkout.vue Pages:
+---------------------------
+Edit /resources/js/pages/shop/Checkout.vue:
+-------------------------------------------
+<script setup lang="ts">
+import { Head, useForm } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import ShopCheckoutSummary from '@/components/shop/ShopCheckoutSummary.vue';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import { useShopCart } from '@/composables/shop/useShopCart';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import type { ShopCheckoutConfig } from '@/types/shop';
+import shop from '@/routes/shop';
+
+type PaymentMethod = 'cod' | 'sslcommerz';
+
+const { districts, deliveryCharges } = defineProps<{
+    districts: string[];
+    deliveryCharges: ShopCheckoutConfig;
+}>();
+
+const { cart, cartSubtotal, updateQty, removeItem } = useShopCart();
+const { showToast } = useShopUi();
+
+const form = useForm({
+    customer_name: '',
+    phone: '',
+    email: '',
+    district: '',
+    area: '',
+    address: '',
+    notes: '',
+    payment_method: 'cod' as PaymentMethod,
+});
+
+const deliveryCharge = computed(() => {
+    if (cart.value.length === 0) {
+        return 0;
+    }
+
+    if (!form.district) {
+        return deliveryCharges.outsideDhaka;
+    }
+
+    return form.district === deliveryCharges.dhakaDistrict
+        ? deliveryCharges.insideDhaka
+        : deliveryCharges.outsideDhaka;
+});
+
+const deliveryNote = computed(() => {
+    if (cart.value.length === 0 || !form.district) {
+        return '';
+    }
+
+    return form.district === deliveryCharges.dhakaDistrict
+        ? '(Inside Dhaka)'
+        : '(Outside Dhaka)';
+});
+
+const submitLabel = computed(() =>
+    form.payment_method === 'sslcommerz' ? 'Proceed to Payment' : 'Place Order',
+);
+
+function handleIncrement(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    if (item) {
+        updateQty(productId, item.qty + 1);
+    }
+}
+
+function handleDecrement(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    if (item && item.qty > 1) {
+        updateQty(productId, item.qty - 1);
+    }
+}
+
+function handleRemove(productId: number): void {
+    const item = cart.value.find((i) => i.productId === productId);
+    removeItem(productId);
+    if (item) {
+        showToast(`Removed: ${item.name}`);
+    }
+}
+
+function handleSubmit(): void {
+    if (cart.value.length === 0) {
+        showToast('Your cart is empty');
+        return;
+    }
+
+    form.post(shop.checkout.store.url(), {
+        preserveScroll: true,
+        onError: () => {
+            showToast('Please complete the highlighted fields');
+        },
+    });
+}
+</script>
+
+<template>
+    <Head title="Checkout">
+        <meta
+            name="description"
+            content="Secure checkout with Cash on Delivery or SSLCommerz online payment. Delivery across Bangladesh."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            rel="preconnect"
+            href="https://fonts.gstatic.com"
+            crossorigin="anonymous"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+    </Head>
+
+    <div class="bg-gray-50 py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb
+                :items="[
+                    { label: 'Cart', href: shop.cart.url() },
+                    { label: 'Checkout' },
+                ]"
+            />
+
+            <form
+                novalidate
+                class="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8"
+                @submit.prevent="handleSubmit"
+            >
+                <div class="space-y-6 lg:col-span-2">
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Shipping Details
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Where should we deliver your order?
+                        </p>
+
+                        <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label
+                                    for="customer_name"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Full name
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="customer_name"
+                                    v-model="form.customer_name"
+                                    name="customer_name"
+                                    type="text"
+                                    required
+                                    autocomplete="name"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.customer_name
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="e.g. Rina Akter"
+                                />
+                                <p
+                                    v-show="form.errors.customer_name"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.customer_name }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="phone"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Phone
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="phone"
+                                    v-model="form.phone"
+                                    name="phone"
+                                    type="tel"
+                                    required
+                                    autocomplete="tel"
+                                    inputmode="numeric"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.phone
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="01XXXXXXXXX"
+                                />
+                                <p
+                                    v-show="form.errors.phone"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.phone }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="email"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Email
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="email"
+                                    v-model="form.email"
+                                    name="email"
+                                    type="email"
+                                    required
+                                    autocomplete="email"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.email
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="you@example.com"
+                                />
+                                <p
+                                    v-show="form.errors.email"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.email }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="district"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    District
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <select
+                                    id="district"
+                                    v-model="form.district"
+                                    name="district"
+                                    required
+                                    class="w-full rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.district
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                >
+                                    <option value="">Select district</option>
+                                    <option
+                                        v-for="district in districts"
+                                        :key="district"
+                                        :value="district"
+                                    >
+                                        {{ district }}
+                                    </option>
+                                </select>
+                                <p
+                                    v-show="form.errors.district"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.district }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="area"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Area / Thana
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <input
+                                    id="area"
+                                    v-model="form.area"
+                                    name="area"
+                                    type="text"
+                                    required
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.area
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="e.g. Dhanmondi"
+                                />
+                                <p
+                                    v-show="form.errors.area"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.area }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="address"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Full address
+                                    <span class="text-red-600">*</span>
+                                </label>
+                                <textarea
+                                    id="address"
+                                    v-model="form.address"
+                                    name="address"
+                                    rows="2"
+                                    required
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    :class="
+                                        form.errors.address
+                                            ? 'border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-shop-primary-600'
+                                    "
+                                    placeholder="House, road, and any landmark"
+                                />
+                                <p
+                                    v-show="form.errors.address"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ form.errors.address }}
+                                </p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    for="notes"
+                                    class="mb-1.5 block text-sm font-medium text-gray-700"
+                                >
+                                    Order notes
+                                    <span class="text-gray-400"
+                                        >(optional)</span
+                                    >
+                                </label>
+                                <textarea
+                                    id="notes"
+                                    v-model="form.notes"
+                                    name="notes"
+                                    rows="2"
+                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    placeholder="Delivery instructions, preferred time, etc."
+                                />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section
+                        class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+                    >
+                        <h2 class="text-lg font-semibold text-gray-900">
+                            Payment Method
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Choose how you would like to pay for your order.
+                        </p>
+
+                        <div class="mt-5 space-y-3">
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'cod'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="cod"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-shop-primary-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h2m2-6h10a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2v-6a2 2 0 012-2zm7 5a2 2 0 11-4 0 2 2 0 014 0z"
+                                    />
+                                </svg>
+                                <div>
+                                    <p
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Cash on Delivery
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay the delivery agent in cash when you
+                                        receive your order.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <label
+                                class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition"
+                                :class="
+                                    form.payment_method === 'sslcommerz'
+                                        ? 'border-shop-primary-600 bg-shop-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                "
+                            >
+                                <input
+                                    v-model="form.payment_method"
+                                    type="radio"
+                                    name="payment_method"
+                                    value="sslcommerz"
+                                    class="mt-1 h-4 w-4 border-gray-300 text-shop-primary-600 focus:ring-shop-primary-600"
+                                />
+                                <svg
+                                    class="mt-0.5 h-6 w-6 shrink-0 text-shop-primary-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                    />
+                                </svg>
+                                <div>
+                                    <p
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Pay Online (SSLCommerz)
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                        Pay securely with bKash, Nagad, cards,
+                                        or mobile banking via SSLCommerz.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <p
+                            v-show="form.errors.payment_method"
+                            class="mt-3 text-sm text-red-600"
+                        >
+                            {{ form.errors.payment_method }}
+                        </p>
+                    </section>
+                </div>
+
+                <div class="lg:col-span-1">
+                    <div class="lg:sticky lg:top-24">
+                        <ShopCheckoutSummary
+                            :items="cart"
+                            :subtotal="cartSubtotal"
+                            :delivery-charge="deliveryCharge"
+                            :delivery-note="deliveryNote"
+                            :is-empty="cart.length === 0"
+                            :processing="form.processing"
+                            :submit-label="submitLabel"
+                            @increment="handleIncrement"
+                            @decrement="handleDecrement"
+                            @remove="handleRemove"
+                        />
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+7. Edit CheckoutController.php Controller:
+-------------------------------------------
+Edit app/Http/Controllers/Storefront/CheckoutController.php:
+------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Storefront\StoreCheckoutRequest;
+use App\Services\CartService;
+use App\Services\OrderService;
+use App\Services\SslcommerzPaymentService;
+use Illuminate\Http\RedirectResponse;
+use Inertia\Inertia;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+
+class CheckoutController extends Controller
+{
+    public function __construct(
+        private readonly CartService $cartService,
+        private readonly OrderService $orderService,
+        private readonly SslcommerzPaymentService $paymentService,
+    ) {}
+
+    /**
+     * Display the checkout page.
+     */
+    public function index(): Response|RedirectResponse
+    {
+        if ($this->cartService->totalQty() === 0) {
+            return redirect()
+                ->route('shop.cart')
+                ->with('error', 'Your cart is empty. Add items before checkout.');
+        }
+
+        $delivery = config('shop.delivery');
+
+        return Inertia::render('shop/Checkout', [
+            'districts' => config('shop.districts'),
+            'deliveryCharges' => [
+                'insideDhaka' => (float) $delivery['inside_dhaka'],
+                'outsideDhaka' => (float) $delivery['outside_dhaka'],
+                'dhakaDistrict' => $delivery['dhaka_district'],
+            ],
+        ]);
+    }
+
+    /**
+     * Place an order and complete checkout.
+     */
+    public function store(StoreCheckoutRequest $request): RedirectResponse|SymfonyResponse
+    {
+        $validated = $request->validated();
+
+        if ($validated['payment_method'] === 'sslcommerz') {
+            $order = $this->orderService->placeSslcommerzOrder($validated);
+            $result = $this->paymentService->initiate($order);
+
+            if ($result['gateway_url'] === null) {
+                return redirect()
+                    ->route('shop.payments.failed', ['order' => $order->order_number])
+                    ->with('error', 'Unable to start online payment. Please try again.');
+            }
+
+            return Inertia::location($result['gateway_url']);
+        }
+
+        $order = $this->orderService->placeCodOrder($validated);
+
+        return redirect()
+            ->route('shop.orders.success')
+            ->with('order', [
+                'orderNumber' => $order->order_number,
+                'total' => (float) $order->total,
+                'paymentLabel' => 'Cash on Delivery',
+            ]);
+    }
+}
+
+
+
+
+
+
+8. Edit SslcommerzPaymentService.php Service:
+---------------------------------------------
+Edit app/Services/SslcommerzPaymentService.php:
+-----------------------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Order;
+use App\Models\Payment;
+use HasinHayder\Sslcommerz\Data\RefundResponse;
+use HasinHayder\Sslcommerz\Data\RefundStatus;
+use HasinHayder\Sslcommerz\Facades\Sslcommerz;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+
+class SslcommerzPaymentService
+{
+    /**
+     * Initiate an SSLCommerz payment for the given order.
+     *
+     * @return array{payment: Payment, gateway_url: string|null}
+     */
+    public function initiate(Order $order): array
+    {
+        if ($order->payment_status === 'paid') {
+            throw ValidationException::withMessages([
+                'order_id' => 'This order has already been paid.',
+            ]);
+        }
+
+        $existingPayment = $order->payments()
+            ->where('status', 'initiated')
+            ->latest()
+            ->first();
+
+        if ($existingPayment !== null) {
+            $gatewayUrl = $existingPayment->raw_response['GatewayPageURL'] ?? null;
+
+            if ($gatewayUrl !== null) {
+                return [
+                    'payment' => $existingPayment,
+                    'gateway_url' => $gatewayUrl,
+                ];
+            }
+        }
+
+        $transactionId = $this->generateTransactionId($order);
+
+        $payment = Payment::query()->create([
+            'order_id' => $order->id,
+            'transaction_id' => $transactionId,
+            'amount' => $order->total,
+            'currency' => config('sslcommerz.store.currency', 'BDT'),
+            'status' => 'initiated',
+        ]);
+
+        $order->loadMissing('items');
+
+        $quantity = (int) $order->items->sum('quantity');
+        $quantity = max($quantity, 1);
+        $productName = $order->items->first()?->product_name ?? "Order {$order->order_number}";
+
+        $response = Sslcommerz::setOrder(
+            (float) $order->total,
+            $transactionId,
+            $productName,
+            'E-commerce',
+        )
+            ->setCustomer(
+                $order->customer_name,
+                $order->email,
+                $order->phone,
+                $order->address,
+                $order->area,
+                $order->district,
+            )
+            ->setShippingInfo(
+                $quantity,
+                $order->address,
+                $order->customer_name,
+                $order->area,
+                $order->district,
+            )
+            ->makePayment();
+
+        $payment->update([
+            'raw_response' => $response->toArray(),
+        ]);
+
+        if (! $response->success()) {
+            $payment->update(['status' => 'failed']);
+
+            throw ValidationException::withMessages([
+                'payment' => $response->failedReason() ?? 'Unable to initiate SSLCommerz payment.',
+            ]);
+        }
+
+        if ($order->payment_method !== 'sslcommerz') {
+            $order->update(['payment_method' => 'sslcommerz']);
+        }
+
+        return [
+            'payment' => $payment->fresh(),
+            'gateway_url' => $response->gatewayPageURL(),
+        ];
+    }
+
+    /**
+     * Handle a successful SSLCommerz callback or IPN payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function handleSuccessfulCallback(array $payload): Payment
+    {
+        return $this->processValidatedCallback($payload, 'success');
+    }
+
+    /**
+     * Handle a failed SSLCommerz callback payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function handleFailedCallback(array $payload): Payment
+    {
+        if (! Sslcommerz::verifyHash($payload)) {
+            throw ValidationException::withMessages([
+                'hash' => 'Invalid SSLCommerz signature.',
+            ]);
+        }
+
+        $payment = $this->findPaymentByTransactionId((string) ($payload['tran_id'] ?? ''));
+
+        $payment->update([
+            'status' => 'failed',
+            'val_id' => $payload['val_id'] ?? $payment->val_id,
+            'raw_response' => array_merge($payment->raw_response ?? [], $payload),
+        ]);
+
+        $payment->order?->update(['payment_status' => 'failed']);
+
+        return $payment->fresh(['order']);
+    }
+
+    /**
+     * Handle a cancelled SSLCommerz callback payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function handleCancelledCallback(array $payload): Payment
+    {
+        if (! Sslcommerz::verifyHash($payload)) {
+            throw ValidationException::withMessages([
+                'hash' => 'Invalid SSLCommerz signature.',
+            ]);
+        }
+
+        $payment = $this->findPaymentByTransactionId((string) ($payload['tran_id'] ?? ''));
+
+        $payment->update([
+            'status' => 'cancelled',
+            'raw_response' => array_merge($payment->raw_response ?? [], $payload),
+        ]);
+
+        $payment->order?->update(['payment_status' => 'cancelled']);
+
+        return $payment->fresh(['order']);
+    }
+
+    /**
+     * Refund a completed SSLCommerz payment.
+     */
+    public function refund(Payment $payment, float $amount, string $reason): RefundResponse
+    {
+        if ($payment->status !== 'success') {
+            throw ValidationException::withMessages([
+                'payment' => 'Only successful payments can be refunded.',
+            ]);
+        }
+
+        if ($payment->bank_tran_id === null) {
+            throw ValidationException::withMessages([
+                'payment' => 'This payment does not have a bank transaction id.',
+            ]);
+        }
+
+        return Sslcommerz::refundPayment($payment->bank_tran_id, $amount, $reason);
+    }
+
+    /**
+     * Check the refund status for a refund reference id.
+     */
+    public function refundStatus(string $refundRefId): RefundStatus
+    {
+        return Sslcommerz::checkRefundStatus($refundRefId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function processValidatedCallback(array $payload, string $status): Payment
+    {
+        if (! Sslcommerz::verifyHash($payload)) {
+            throw ValidationException::withMessages([
+                'hash' => 'Invalid SSLCommerz signature.',
+            ]);
+        }
+
+        $payment = $this->findPaymentByTransactionId((string) ($payload['tran_id'] ?? ''));
+
+        $isValid = Sslcommerz::validatePayment(
+            $payload,
+            (string) $payment->transaction_id,
+            (float) $payment->amount,
+            (string) $payment->currency,
+        );
+
+        if (! $isValid) {
+            throw ValidationException::withMessages([
+                'payment' => 'SSLCommerz payment validation failed.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($payment, $payload, $status): Payment {
+            $payment->update([
+                'status' => $status,
+                'val_id' => $payload['val_id'] ?? $payment->val_id,
+                'card_type' => $payload['card_type'] ?? $payment->card_type,
+                'bank_tran_id' => $payload['bank_tran_id'] ?? $payment->bank_tran_id,
+                'store_amount' => $payload['store_amount'] ?? $payment->store_amount,
+                'raw_response' => array_merge($payment->raw_response ?? [], $payload),
+                'paid_at' => now(),
+            ]);
+
+            $payment->order?->update(['payment_status' => 'paid']);
+
+            return $payment->fresh(['order']);
+        });
+    }
+
+    private function findPaymentByTransactionId(string $transactionId): Payment
+    {
+        if ($transactionId === '') {
+            throw ValidationException::withMessages([
+                'tran_id' => 'Transaction id is required.',
+            ]);
+        }
+
+        $payment = Payment::query()
+            ->where('transaction_id', $transactionId)
+            ->first();
+
+        if ($payment === null) {
+            throw ValidationException::withMessages([
+                'tran_id' => 'Payment not found for the given transaction id.',
+            ]);
+        }
+
+        return $payment;
+    }
+
+    private function generateTransactionId(Order $order): string
+    {
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $transactionId = sprintf(
+                'PAY-%s-%s',
+                $order->order_number,
+                strtoupper(substr(uniqid(), -8)),
+            );
+
+            if (! Payment::query()->where('transaction_id', $transactionId)->exists()) {
+                return $transactionId;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate a unique payment transaction id.');
+    }
+}
+
+
+
+
+
+9. Edit OrderService.php Service:
+---------------------------------
+Edit app/Services/OrderService.php:
+-----------------------------------
+<?php
+
+namespace App\Services;
+
+use App\Models\Order;
+use App\Models\Payment;
+use HasinHayder\Sslcommerz\Data\RefundResponse;
+use HasinHayder\Sslcommerz\Data\RefundStatus;
+use HasinHayder\Sslcommerz\Facades\Sslcommerz;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+
+class SslcommerzPaymentService
+{
+    /**
+     * Initiate an SSLCommerz payment for the given order.
+     *
+     * @return array{payment: Payment, gateway_url: string|null}
+     */
+    public function initiate(Order $order): array
+    {
+        if ($order->payment_status === 'paid') {
+            throw ValidationException::withMessages([
+                'order_id' => 'This order has already been paid.',
+            ]);
+        }
+
+        $existingPayment = $order->payments()
+            ->where('status', 'initiated')
+            ->latest()
+            ->first();
+
+        if ($existingPayment !== null) {
+            $gatewayUrl = $existingPayment->raw_response['GatewayPageURL'] ?? null;
+
+            if ($gatewayUrl !== null) {
+                return [
+                    'payment' => $existingPayment,
+                    'gateway_url' => $gatewayUrl,
+                ];
+            }
+        }
+
+        $transactionId = $this->generateTransactionId($order);
+
+        $payment = Payment::query()->create([
+            'order_id' => $order->id,
+            'transaction_id' => $transactionId,
+            'amount' => $order->total,
+            'currency' => config('sslcommerz.store.currency', 'BDT'),
+            'status' => 'initiated',
+        ]);
+
+        $order->loadMissing('items');
+
+        $quantity = (int) $order->items->sum('quantity');
+        $quantity = max($quantity, 1);
+        $productName = $order->items->first()?->product_name ?? "Order {$order->order_number}";
+
+        $response = Sslcommerz::setOrder(
+            (float) $order->total,
+            $transactionId,
+            $productName,
+            'E-commerce',
+        )
+            ->setCustomer(
+                $order->customer_name,
+                $order->email,
+                $order->phone,
+                $order->address,
+                $order->area,
+                $order->district,
+            )
+            ->setShippingInfo(
+                $quantity,
+                $order->address,
+                $order->customer_name,
+                $order->area,
+                $order->district,
+            )
+            ->makePayment();
+
+        $payment->update([
+            'raw_response' => $response->toArray(),
+        ]);
+
+        if (! $response->success()) {
+            $payment->update(['status' => 'failed']);
+
+            throw ValidationException::withMessages([
+                'payment' => $response->failedReason() ?? 'Unable to initiate SSLCommerz payment.',
+            ]);
+        }
+
+        if ($order->payment_method !== 'sslcommerz') {
+            $order->update(['payment_method' => 'sslcommerz']);
+        }
+
+        return [
+            'payment' => $payment->fresh(),
+            'gateway_url' => $response->gatewayPageURL(),
+        ];
+    }
+
+    /**
+     * Handle a successful SSLCommerz callback or IPN payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function handleSuccessfulCallback(array $payload): Payment
+    {
+        return $this->processValidatedCallback($payload, 'success');
+    }
+
+    /**
+     * Handle a failed SSLCommerz callback payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function handleFailedCallback(array $payload): Payment
+    {
+        if (! Sslcommerz::verifyHash($payload)) {
+            throw ValidationException::withMessages([
+                'hash' => 'Invalid SSLCommerz signature.',
+            ]);
+        }
+
+        $payment = $this->findPaymentByTransactionId((string) ($payload['tran_id'] ?? ''));
+
+        $payment->update([
+            'status' => 'failed',
+            'val_id' => $payload['val_id'] ?? $payment->val_id,
+            'raw_response' => array_merge($payment->raw_response ?? [], $payload),
+        ]);
+
+        $payment->order?->update(['payment_status' => 'failed']);
+
+        return $payment->fresh(['order']);
+    }
+
+    /**
+     * Handle a cancelled SSLCommerz callback payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function handleCancelledCallback(array $payload): Payment
+    {
+        if (! Sslcommerz::verifyHash($payload)) {
+            throw ValidationException::withMessages([
+                'hash' => 'Invalid SSLCommerz signature.',
+            ]);
+        }
+
+        $payment = $this->findPaymentByTransactionId((string) ($payload['tran_id'] ?? ''));
+
+        $payment->update([
+            'status' => 'cancelled',
+            'raw_response' => array_merge($payment->raw_response ?? [], $payload),
+        ]);
+
+        $payment->order?->update(['payment_status' => 'cancelled']);
+
+        return $payment->fresh(['order']);
+    }
+
+    /**
+     * Refund a completed SSLCommerz payment.
+     */
+    public function refund(Payment $payment, float $amount, string $reason): RefundResponse
+    {
+        if ($payment->status !== 'success') {
+            throw ValidationException::withMessages([
+                'payment' => 'Only successful payments can be refunded.',
+            ]);
+        }
+
+        if ($payment->bank_tran_id === null) {
+            throw ValidationException::withMessages([
+                'payment' => 'This payment does not have a bank transaction id.',
+            ]);
+        }
+
+        return Sslcommerz::refundPayment($payment->bank_tran_id, $amount, $reason);
+    }
+
+    /**
+     * Check the refund status for a refund reference id.
+     */
+    public function refundStatus(string $refundRefId): RefundStatus
+    {
+        return Sslcommerz::checkRefundStatus($refundRefId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function processValidatedCallback(array $payload, string $status): Payment
+    {
+        if (! Sslcommerz::verifyHash($payload)) {
+            throw ValidationException::withMessages([
+                'hash' => 'Invalid SSLCommerz signature.',
+            ]);
+        }
+
+        $payment = $this->findPaymentByTransactionId((string) ($payload['tran_id'] ?? ''));
+
+        $isValid = Sslcommerz::validatePayment(
+            $payload,
+            (string) $payment->transaction_id,
+            (float) $payment->amount,
+            (string) $payment->currency,
+        );
+
+        if (! $isValid) {
+            throw ValidationException::withMessages([
+                'payment' => 'SSLCommerz payment validation failed.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($payment, $payload, $status): Payment {
+            $payment->update([
+                'status' => $status,
+                'val_id' => $payload['val_id'] ?? $payment->val_id,
+                'card_type' => $payload['card_type'] ?? $payment->card_type,
+                'bank_tran_id' => $payload['bank_tran_id'] ?? $payment->bank_tran_id,
+                'store_amount' => $payload['store_amount'] ?? $payment->store_amount,
+                'raw_response' => array_merge($payment->raw_response ?? [], $payload),
+                'paid_at' => now(),
+            ]);
+
+            $payment->order?->update(['payment_status' => 'paid']);
+
+            return $payment->fresh(['order']);
+        });
+    }
+
+    private function findPaymentByTransactionId(string $transactionId): Payment
+    {
+        if ($transactionId === '') {
+            throw ValidationException::withMessages([
+                'tran_id' => 'Transaction id is required.',
+            ]);
+        }
+
+        $payment = Payment::query()
+            ->where('transaction_id', $transactionId)
+            ->first();
+
+        if ($payment === null) {
+            throw ValidationException::withMessages([
+                'tran_id' => 'Payment not found for the given transaction id.',
+            ]);
+        }
+
+        return $payment;
+    }
+
+    private function generateTransactionId(Order $order): string
+    {
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $transactionId = sprintf(
+                'PAY-%s-%s',
+                $order->order_number,
+                strtoupper(substr(uniqid(), -8)),
+            );
+
+            if (! Payment::query()->where('transaction_id', $transactionId)->exists()) {
+                return $transactionId;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate a unique payment transaction id.');
+    }
+}
+
+
+
+
+
+
+10. Edit StoreCheckoutRequest.php Request:
+----------------------------------------------
+Edit app/Http/Requests/Storefront/StoreCheckoutRequest.php:
+-----------------------------------------------------------
+<?php
+
+namespace App\Http\Requests\Storefront;
+
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class StoreCheckoutRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'customer_name' => ['required', 'string', 'max:150'],
+            'phone' => ['required', 'string', 'regex:/^01\d{9}$/'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'district' => ['required', 'string', Rule::in(config('shop.districts'))],
+            'area' => ['required', 'string', 'max:150'],
+            'address' => ['required', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'payment_method' => ['required', Rule::in(['cod', 'sslcommerz'])],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'phone.regex' => 'Enter a valid 11-digit Bangladesh phone number (01XXXXXXXXX).',
+        ];
+    }
+
+    /**
+     * Normalise the phone number before validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('phone')) {
+            $this->merge([
+                'phone' => preg_replace('/[\s-]+/', '', (string) $this->input('phone')),
+            ]);
+        }
+    }
+}
+
+
+
+
+
+
+11. Edit OrderSuccess.vue Pages:
+-------------------------------
+Edit resources/js/pages/shop/OrderSuccess.vue:
+----------------------------------------------
+<script setup lang="ts">
+import { Head, Link } from '@inertiajs/vue3';
+import ShopOrderConfirmation from '@/components/shop/ShopOrderConfirmation.vue';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import { formatTaka } from '@/lib/shop/currency';
+import type { ShopPlacedOrder } from '@/types/shop';
+import shop from '@/routes/shop';
+
+const { order } = defineProps<{
+    order: ShopPlacedOrder | null;
+}>();
+</script>
+
+<template>
+    <Head title="Order Confirmed">
+        <meta
+            name="description"
+            content="Your ShopEase order has been placed successfully."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            rel="preconnect"
+            href="https://fonts.gstatic.com"
+            crossorigin="anonymous"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+    </Head>
+
+    <div class="bg-gray-50 py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb :items="[{ label: 'Order Confirmed' }]" />
+
+            <ShopOrderConfirmation
+                v-if="order"
+                :order-number="order.orderNumber"
+                :total="formatTaka(order.total)"
+                :payment-label="order.paymentLabel"
+            />
+
+            <div
+                v-else
+                class="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white p-8 text-center md:p-12"
+            >
+                <div
+                    class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 text-gray-400"
+                >
+                    <svg
+                        class="h-9 w-9"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                    </svg>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">
+                    No order found
+                </h1>
+                <p class="mt-2 text-sm text-gray-600 md:text-base">
+                    We couldn't find a recent order. Place an order from
+                    checkout to see your confirmation here.
+                </p>
+                <Link
+                    :href="shop.index()"
+                    class="mt-8 inline-block rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700"
+                >
+                    Continue Shopping
+                </Link>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
+12. Create SslcommerzCallbackController Controller:
+---------------------------------------------------
+Command: php artisan make:controller Storefront/SslcommerzCallbackController
+Edit app/Http/Controllers/Storfront/SslcommerzCallbackController.php:
+---------------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+use App\Http\Controllers\Controller;
+use App\Models\Payment;
+use App\Services\SslcommerzPaymentService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
+class SslcommerzCallbackController extends Controller
+{
+    public function __construct(
+        private readonly SslcommerzPaymentService $paymentService,
+    ) {}
+
+    /**
+     * Handle SSLCommerz success callback and redirect to the storefront.
+     */
+    public function success(Request $request): RedirectResponse
+    {
+        try {
+            $payment = $this->paymentService->handleSuccessfulCallback($request->all());
+
+            return redirect()->route('shop.payments.success', [
+                'order' => $payment->order?->order_number,
+            ]);
+        } catch (ValidationException) {
+            return redirect()->route('shop.payments.failed', [
+                'order' => $this->orderNumberFromTransactionId($request->input('tran_id')),
+            ]);
+        }
+    }
+
+    /**
+     * Handle SSLCommerz failure callback and redirect to the storefront.
+     */
+    public function failure(Request $request): RedirectResponse
+    {
+        try {
+            $payment = $this->paymentService->handleFailedCallback($request->all());
+
+            return redirect()->route('shop.payments.failed', [
+                'order' => $payment->order?->order_number,
+            ]);
+        } catch (ValidationException) {
+            return redirect()->route('shop.payments.failed');
+        }
+    }
+
+    /**
+     * Handle SSLCommerz cancel callback and redirect to the storefront.
+     */
+    public function cancel(Request $request): RedirectResponse
+    {
+        try {
+            $payment = $this->paymentService->handleCancelledCallback($request->all());
+
+            return redirect()->route('shop.payments.cancelled', [
+                'order' => $payment->order?->order_number,
+            ]);
+        } catch (ValidationException) {
+            return redirect()->route('shop.payments.cancelled');
+        }
+    }
+
+    private function orderNumberFromTransactionId(mixed $transactionId): ?string
+    {
+        if (! is_string($transactionId) || $transactionId === '') {
+            return null;
+        }
+
+        return Payment::query()
+            ->where('transaction_id', $transactionId)
+            ->first()
+            ?->order
+            ?->order_number;
+    }
+}
+
+
+
+
+
+
+13. Create PaymentResultController Controller:
+-----------------------------------------------
+Command: php artisan make:controller Storefront/PaymentResultController
+Edit app/Http/Controllers/Storfront/PaymentResultController.php:
+----------------------------------------------------------------
+<?php
+
+namespace App\Http\Controllers\Storefront;
+
+use App\Http\Controllers\Controller;
+use App\Models\Order;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class PaymentResultController extends Controller
+{
+    /**
+     * Display the payment success page.
+     */
+    public function success(Request $request): Response
+    {
+        return Inertia::render('shop/PaymentSuccess', [
+            'order' => $this->orderSummary($request->query('order')),
+        ]);
+    }
+
+    /**
+     * Display the payment failed page.
+     */
+    public function failed(Request $request): Response
+    {
+        return Inertia::render('shop/PaymentFailed', [
+            'order' => $this->orderSummary($request->query('order')),
+        ]);
+    }
+
+    /**
+     * Display the payment cancelled page.
+     */
+    public function cancelled(Request $request): Response
+    {
+        return Inertia::render('shop/PaymentCancelled', [
+            'order' => $this->orderSummary($request->query('order')),
+        ]);
+    }
+
+    /**
+     * @return array{orderNumber: string, total: float, paymentLabel: string}|null
+     */
+    private function orderSummary(?string $orderNumber): ?array
+    {
+        if (! filled($orderNumber)) {
+            return null;
+        }
+
+        $order = Order::query()
+            ->where('order_number', $orderNumber)
+            ->first();
+
+        if ($order === null) {
+            return null;
+        }
+
+        return [
+            'orderNumber' => $order->order_number,
+            'total' => (float) $order->total,
+            'paymentLabel' => 'SSLCommerz',
+        ];
+    }
+}
+
+
+
+
+
+
+14. Edit Routes/web.php:
+------------------------
+<?php
+
+use App\Http\Controllers\Storefront\CartController;
+use App\Http\Controllers\Storefront\CheckoutController;
+use App\Http\Controllers\Storefront\HomeController;
+use App\Http\Controllers\Storefront\OrderSuccessController;
+use App\Http\Controllers\Storefront\PaymentResultController;
+use App\Http\Controllers\Storefront\ProductController;
+use App\Http\Controllers\Storefront\ShopController;
+use App\Http\Controllers\Storefront\SslcommerzCallbackController;
+use App\Http\Controllers\Storefront\WishlistController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', HomeController::class)->name('home');
+Route::get('/shop', ShopController::class)->name('shop.index');
+Route::get('/products/{slug}', [ProductController::class, 'show'])->name('shop.products.show');
+
+// Cart
+Route::get('/cart', [CartController::class, 'index'])->name('shop.cart');
+Route::post('/cart', [CartController::class, 'store'])->name('shop.cart.store');
+Route::patch('/cart/{productId}', [CartController::class, 'update'])->name('shop.cart.update');
+Route::delete('/cart', [CartController::class, 'clear'])->name('shop.cart.clear');
+Route::delete('/cart/{productId}', [CartController::class, 'destroy'])->name('shop.cart.destroy');
+
+Route::get('/wishlist', [WishlistController::class, 'index'])->name('shop.wishlist');
+Route::middleware('auth')->group(function () {
+    Route::post('/wishlist', [WishlistController::class, 'store'])->name('shop.wishlist.store');
+    Route::delete('/wishlist', [WishlistController::class, 'clear'])->name('shop.wishlist.clear');
+    Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy'])->name('shop.wishlist.destroy');
+});
+Route::get('/checkout', [CheckoutController::class, 'index'])->name('shop.checkout');
+Route::post('/checkout', [CheckoutController::class, 'store'])->name('shop.checkout.store');
+Route::get('/orders/success', OrderSuccessController::class)->name('shop.orders.success');
+
+Route::get('/orders/payment/success', [PaymentResultController::class, 'success'])->name('shop.payments.success');
+Route::get('/orders/payment/failed', [PaymentResultController::class, 'failed'])->name('shop.payments.failed');
+Route::get('/orders/payment/cancelled', [PaymentResultController::class, 'cancelled'])->name('shop.payments.cancelled');
+
+Route::post('/payments/sslcommerz/success', [SslcommerzCallbackController::class, 'success'])->name('shop.payments.sslcommerz.success');
+Route::post('/payments/sslcommerz/failure', [SslcommerzCallbackController::class, 'failure'])->name('shop.payments.sslcommerz.failure');
+Route::post('/payments/sslcommerz/cancel', [SslcommerzCallbackController::class, 'cancel'])->name('shop.payments.sslcommerz.cancel');
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+});
+
+require __DIR__ . '/settings.php';
+
+
+
+
+
+
+
+15. Edit /shop.ts types:
+------------------------
+Edit resources/js/types/shop.ts:
+---------------------------------
+export type ShopProduct = {
+    id?: number;
+    name: string;
+    slug?: string;
+    price: number;
+    oldPrice?: number;
+    img: string;
+    rating: number;
+    reviews: number;
+    inStock: boolean;
+    tag?: string;
+};
+
+export type ShopCatalogProduct = ShopProduct & {
+    id: number;
+    category: string;
+    sold: number;
+};
+
+export type ShopSortOption = 'newest' | 'best' | 'price-asc' | 'price-desc';
+
+export type ShopPriceRange =
+    | 'all'
+    | '0-1000'
+    | '1000-3000'
+    | '3000-6000'
+    | '6000-';
+
+export type ShopProductImage = {
+    full: string;
+    thumb: string;
+};
+
+export type ShopRatingBreakdown = {
+    stars: number;
+    percent: number;
+};
+
+export type ShopReview = {
+    name: string;
+    rating: number;
+    date: string;
+    verified: boolean;
+    text: string;
+};
+
+export type ShopProductDetail = ShopProduct & {
+    id: number;
+    slug: string;
+    category: string;
+    categoryHref: string;
+    summary: string;
+    description: string;
+    features: string[];
+    images: ShopProductImage[];
+    ratingBreakdown: ShopRatingBreakdown[];
+    reviewList: ShopReview[];
+};
+
+export type ShopCategoryFilter = {
+    name: string;
+    slug: string;
+};
+
+export type ShopFilters = {
+    categories: string[];
+    price: string;
+    inStock: boolean;
+    sort: string;
+    search: string;
+    page: number;
+};
+
+export type ShopPaginationMeta = {
+    total: number;
+    perPage: number;
+    currentPage: number;
+    lastPage: number;
+};
+
+export type ShopCategory = {
+    name: string;
+    img: string;
+    href: string;
+};
+
+export type ShopCarouselSlide = {
+    src: string;
+    alt: string;
+};
+
+export type ShopCartItem = {
+    productId: number;
+    name: string;
+    slug: string;
+    price: number;
+    img: string;
+    qty: number;
+    inStock: boolean;
+};
+
+export type ShopCart = {
+    qty: number;
+    items: ShopCartItem[];
+};
+
+export type ShopWishlistItem = ShopProduct & {
+    id: number;
+};
+
+export type ShopWishlist = {
+    count: number;
+    productIds: number[];
+    items: ShopWishlistItem[];
+};
+
+export type ShopPlacedOrder = {
+    orderNumber: string;
+    total: number;
+    paymentLabel: string;
+};
+
+export type ShopCheckoutConfig = {
+    insideDhaka: number;
+    outsideDhaka: number;
+    dhakaDistrict: string;
+};
+
+
+
+
+
+
+16. Edit app.php bootstrap:
+---------------------------
+Edit bootstrap/app.php:
+------------------------
+<?php
+
+use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\HandleAppearance;
+use App\Http\Middleware\HandleInertiaRequests;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__ . '/../routes/web.php',
+        api: __DIR__ . '/../routes/api.php',
+        commands: __DIR__ . '/../routes/console.php',
+        health: '/up',
+        then: function () {
+            Route::middleware('web')
+                ->group(base_path('routes/admin.php'));
+        },
+    )
+    ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->alias([
+            'admin' => EnsureUserIsAdmin::class,
+        ]);
+
+        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        $middleware->validateCsrfTokens(except: [
+            'payments/sslcommerz/*',
+            'api/payments/sslcommerz/*',
+        ]);
+
+        $middleware->web(append: [
+            HandleAppearance::class,
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
+        ]);
+    })
+    ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(
+            fn(Request $request) => $request->is('api/*'),
+        );
+    })->create();
+
+
+
+
+
+
+
+17. Edit ShopLayout.vue Layouts:
+--------------------------------
+Edit resources/js/layouts/shop/ShopLayout.vue:
+----------------------------------------------
+<script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue';
+import ShopCartDrawer from '@/components/shop/ShopCartDrawer.vue';
+import ShopFooter from '@/components/shop/ShopFooter.vue';
+import ShopHeader from '@/components/shop/ShopHeader.vue';
+import ShopMobileDrawer from '@/components/shop/ShopMobileDrawer.vue';
+import ShopToast from '@/components/shop/ShopToast.vue';
+import { useShopCart } from '@/composables/shop/useShopCart';
+import { useShopCatalog } from '@/composables/shop/useShopCatalog';
+import { useShopUi } from '@/composables/shop/useShopUi';
+
+const { closeCart } = useShopCart();
+const { closeFilterDrawer, isFilterDrawerOpen } = useShopCatalog();
+const { closeMobileMenu } = useShopUi();
+
+function handleEscape(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+        closeMobileMenu();
+        closeCart();
+
+        if (isFilterDrawerOpen.value) {
+            closeFilterDrawer();
+        }
+    }
+}
+
+onMounted(() => {
+    document.documentElement.classList.add('scroll-smooth');
+    document.addEventListener('keydown', handleEscape);
+});
+
+onUnmounted(() => {
+    document.documentElement.classList.remove('scroll-smooth');
+    document.removeEventListener('keydown', handleEscape);
+    document.body.style.overflow = '';
+});
+</script>
+
+<template>
+    <div class="bg-white font-shop text-gray-600 antialiased">
+        <a
+            href="#main"
+            class="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-gray-900 focus:ring-2 focus:ring-shop-primary-600"
+            >Skip to content</a
+        >
+
+        <ShopHeader />
+        <ShopMobileDrawer />
+
+        <main id="main">
+            <slot />
+        </main>
+
+        <ShopFooter />
+        <ShopCartDrawer />
+        <ShopToast />
+    </div>
+</template>
+
+
+
+
+
+
+18. Create sslcommerz.php config:
+---------------------------------
+Edit config/sslcommerz.php:
+----------------------------
+<?php
+
+declare(strict_types=1);
+
+// config for HasinHayder/Sslcommerz
+
+return [
+    /**
+     * Enable/Disable Sandbox mode
+     */
+    'sandbox' => filter_var(env('SSLC_SANDBOX', true), FILTER_VALIDATE_BOOLEAN),
+
+    /**
+     * The API credentials given from SSLCommerz
+     */
+    'store' => [
+        'id' => env('SSLC_STORE_ID'),
+        'password' => env('SSLC_STORE_PASSWORD'),
+        'currency' => env('SSLC_STORE_CURRENCY', 'BDT'),
+    ],
+
+    /**
+     * Route names for success/failure/cancel
+     */
+    'route' => [
+        'success' => env('SSLC_ROUTE_SUCCESS', 'shop.payments.sslcommerz.success'),
+        'failure' => env('SSLC_ROUTE_FAILURE', 'shop.payments.sslcommerz.failure'),
+        'cancel' => env('SSLC_ROUTE_CANCEL', 'shop.payments.sslcommerz.cancel'),
+        'ipn' => env('SSLC_ROUTE_IPN', 'api.payments.sslcommerz.ipn'),
+    ],
+
+    /**
+     * Product profile required from SSLC
+     * By default it is "general"
+     *
+     * AVAILABLE PROFILES
+     *  general
+     *  physical-goods
+     *  non-physical-goods
+     *  airline-tickets
+     *  travel-vertical
+     *  telecom-vertical
+     */
+    'product_profile' => 'general',
+];
+
+
+
+
+
+
+19. Create ShopPaymentResult.vue Components:
+--------------------------------------------
+Edit resources/js/components/shop/ShopPaymentResult.vue:
+----------------------------------------------------------
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import type { ShopPlacedOrder } from '@/types/shop';
+import { formatTaka } from '@/lib/shop/currency';
+import shop from '@/routes/shop';
+
+const { status, order } = defineProps<{
+    status: 'success' | 'failed' | 'cancelled';
+    order: ShopPlacedOrder | null;
+}>();
+
+const content = computed(() => {
+    switch (status) {
+        case 'success':
+            return {
+                iconBg: 'bg-green-50 text-green-600',
+                title: 'Payment successful!',
+                description:
+                    'Your payment has been confirmed and your order is being processed. A confirmation email is on its way.',
+                iconPath: 'M5 13l4 4L19 7',
+            };
+        case 'failed':
+            return {
+                iconBg: 'bg-red-50 text-red-600',
+                title: 'Payment failed',
+                description:
+                    'We could not process your payment. No charges were made. You can try again or choose a different payment method.',
+                iconPath: 'M6 18L18 6M6 6l12 12',
+            };
+        case 'cancelled':
+            return {
+                iconBg: 'bg-amber-50 text-amber-600',
+                title: 'Payment cancelled',
+                description:
+                    'You cancelled the payment on the gateway page. Your order is saved but not paid yet.',
+                iconPath:
+                    'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+            };
+    }
+});
+</script>
+
+<template>
+    <div
+        class="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white p-8 text-center md:p-12"
+    >
+        <div
+            class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full"
+            :class="content.iconBg"
+        >
+            <svg
+                class="h-9 w-9"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+            >
+                <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    :d="content.iconPath"
+                />
+            </svg>
+        </div>
+
+        <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">
+            {{ content.title }}
+        </h1>
+        <p class="mt-2 text-sm text-gray-600 md:text-base">
+            {{ content.description }}
+        </p>
+
+        <div
+            v-if="order"
+            class="mt-6 grid grid-cols-1 gap-3 rounded-xl bg-gray-50 p-5 text-sm sm:grid-cols-3"
+        >
+            <div>
+                <p class="text-gray-400">Order number</p>
+                <p class="mt-0.5 font-semibold text-gray-900">
+                    {{ order.orderNumber }}
+                </p>
+            </div>
+            <div>
+                <p class="text-gray-400">Total</p>
+                <p class="mt-0.5 font-semibold text-gray-900">
+                    {{ formatTaka(order.total) }}
+                </p>
+            </div>
+            <div>
+                <p class="text-gray-400">Payment</p>
+                <p class="mt-0.5 font-semibold text-gray-900">
+                    {{ order.paymentLabel }}
+                </p>
+            </div>
+        </div>
+
+        <div
+            v-else
+            class="mt-6 rounded-xl bg-gray-50 p-5 text-sm text-gray-600"
+        >
+            Order details are unavailable. If you completed a payment, check
+            your email for confirmation.
+        </div>
+
+        <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Link
+                v-if="status !== 'success'"
+                :href="shop.checkout.url()"
+                class="rounded-lg bg-shop-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-shop-primary-700"
+            >
+                {{
+                    status === 'cancelled'
+                        ? 'Try Payment Again'
+                        : 'Back to Checkout'
+                }}
+            </Link>
+            <Link
+                :href="shop.index.url()"
+                class="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                :class="{
+                    'border-transparent bg-shop-primary-600 text-white hover:bg-shop-primary-700 hover:text-white':
+                        status === 'success',
+                }"
+            >
+                Continue Shopping
+            </Link>
+        </div>
+    </div>
+</template>
+
+
+
+
+
+
+20. Create PaymentSuccess.vue Pages:
+------------------------------------
+Edit resources/js/pages/shop/PaymentSuccess.vue:
+------------------------------------------------
+<script setup lang="ts">
+import { Head } from '@inertiajs/vue3';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import ShopPaymentResult from '@/components/shop/ShopPaymentResult.vue';
+import type { ShopPlacedOrder } from '@/types/shop';
+
+const { order } = defineProps<{
+    order: ShopPlacedOrder | null;
+}>();
+</script>
+
+<template>
+    <Head title="Payment Successful">
+        <meta
+            name="description"
+            content="Your ShopEase online payment was completed successfully."
+        />
+    </Head>
+
+    <div class="bg-gray-50 py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb :items="[{ label: 'Payment Successful' }]" />
+            <ShopPaymentResult status="success" :order="order" />
+        </div>
+    </div>
+</template>
+
+
+
+
+
+21. Create PaymentFailed.vue Pages:
+------------------------------------
+Edit resources/js/pages/shop/PaymentFailed.vue:
+------------------------------------------------
+<script setup lang="ts">
+import { Head } from '@inertiajs/vue3';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import ShopPaymentResult from '@/components/shop/ShopPaymentResult.vue';
+import type { ShopPlacedOrder } from '@/types/shop';
+
+const { order } = defineProps<{
+    order: ShopPlacedOrder | null;
+}>();
+</script>
+
+<template>
+    <Head title="Payment Failed">
+        <meta
+            name="description"
+            content="Your ShopEase online payment could not be completed."
+        />
+    </Head>
+
+    <div class="bg-gray-50 py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb :items="[{ label: 'Payment Failed' }]" />
+            <ShopPaymentResult status="failed" :order="order" />
+        </div>
+    </div>
+</template>
+
+
+
+
+22. Create PaymentCancelled.vue Pages:
+------------------------------------
+Edit resources/js/pages/shop/PaymentCancelled.vue:
+------------------------------------------------
+<script setup lang="ts">
+import { Head } from '@inertiajs/vue3';
+import ShopPageBreadcrumb from '@/components/shop/ShopPageBreadcrumb.vue';
+import ShopPaymentResult from '@/components/shop/ShopPaymentResult.vue';
+import type { ShopPlacedOrder } from '@/types/shop';
+
+const { order } = defineProps<{
+    order: ShopPlacedOrder | null;
+}>();
+</script>
+
+<template>
+    <Head title="Payment Cancelled">
+        <meta
+            name="description"
+            content="Your ShopEase online payment was cancelled."
+        />
+    </Head>
+
+    <div class="bg-gray-50 py-6 md:py-10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <ShopPageBreadcrumb :items="[{ label: 'Payment Cancelled' }]" />
+            <ShopPaymentResult status="cancelled" :order="order" />
+        </div>
+    </div>
+</template>
+
+
+
+
+
+23. Edit ShopCheckoutSummary.vue Components:
+--------------------------------------------
+Edit resources/js/components/shop/ShopCheckoutSummary.vue:
+-----------------------------------------------------------
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { formatTaka } from '@/lib/shop/currency';
+import type { ShopCartItem } from '@/types/shop';
+
+const {
+    items,
+    subtotal,
+    deliveryCharge,
+    deliveryNote,
+    isEmpty,
+    processing = false,
+    submitLabel = 'Place Order',
+} = defineProps<{
+    items: ShopCartItem[];
+    subtotal: number;
+    deliveryCharge: number;
+    deliveryNote: string;
+    isEmpty: boolean;
+    processing?: boolean;
+    submitLabel?: string;
+}>();
+
+const emit = defineEmits<{
+    increment: [productId: number];
+    decrement: [productId: number];
+    remove: [productId: number];
+}>();
+
+const isSummaryOpen = ref(false);
+
+const itemCount = computed(() =>
+    items.reduce((sum, item) => sum + item.qty, 0),
+);
+
+const grandTotal = computed(() => subtotal + deliveryCharge);
+
+function toggleSummary(): void {
+    if (window.innerWidth >= 1024) {
+        return;
+    }
+
+    isSummaryOpen.value = !isSummaryOpen.value;
+}
+</script>
+
+<template>
+    <div class="rounded-xl border border-gray-200 bg-white">
+        <button
+            type="button"
+            class="flex w-full items-center justify-between gap-2 p-5 text-left lg:cursor-default"
+            @click="toggleSummary"
+        >
+            <span class="text-lg font-semibold text-gray-900"
+                >Order Summary</span
+            >
+            <span class="flex items-center gap-2">
+                <span
+                    class="rounded-full bg-shop-primary-50 px-2.5 py-0.5 text-xs font-medium text-shop-primary-700"
+                >
+                    {{ itemCount }}
+                    {{ itemCount === 1 ? 'item' : 'items' }}
+                </span>
+                <svg
+                    class="h-5 w-5 text-gray-400 lg:hidden"
+                    :class="{ 'rotate-180': isSummaryOpen }"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M19 9l-7 7-7-7"
+                    />
+                </svg>
+            </span>
+        </button>
+
+        <div
+            class="border-t border-gray-100 lg:block"
+            :class="isSummaryOpen ? 'block' : 'hidden'"
+        >
+            <ul class="divide-y divide-gray-100 px-5">
+                <li
+                    v-if="isEmpty"
+                    class="py-8 text-center text-sm text-gray-400"
+                >
+                    Your cart is empty.
+                </li>
+                <li
+                    v-for="item in items"
+                    v-else
+                    :key="item.productId"
+                    class="flex gap-3 py-4"
+                >
+                    <div
+                        class="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
+                    >
+                        <img
+                            :src="item.img"
+                            :alt="item.name"
+                            class="h-full w-full object-cover"
+                        />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-start justify-between gap-2">
+                            <p
+                                class="line-clamp-1 text-sm font-medium text-gray-900"
+                            >
+                                {{ item.name }}
+                            </p>
+                            <button
+                                type="button"
+                                :aria-label="`Remove ${item.name}`"
+                                class="shrink-0 rounded text-gray-300 transition hover:text-red-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                @click="emit('remove', item.productId)"
+                            >
+                                <svg
+                                    class="h-4 w-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="mt-0.5 text-xs text-gray-400">
+                            {{ formatTaka(item.price) }} each
+                        </p>
+                        <div class="mt-2 flex items-center justify-between">
+                            <div
+                                class="inline-flex items-center rounded-lg border border-gray-300"
+                            >
+                                <button
+                                    type="button"
+                                    :aria-label="`Decrease quantity of ${item.name}`"
+                                    class="inline-flex h-8 w-8 items-center justify-center rounded-l-lg text-gray-600 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
+                                    :disabled="item.qty <= 1"
+                                    @click="emit('decrement', item.productId)"
+                                >
+                                    <svg
+                                        class="h-4 w-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M20 12H4"
+                                        />
+                                    </svg>
+                                </button>
+                                <span
+                                    class="w-9 text-center text-sm font-medium text-gray-900"
+                                    >{{ item.qty }}</span
+                                >
+                                <button
+                                    type="button"
+                                    :aria-label="`Increase quantity of ${item.name}`"
+                                    class="inline-flex h-8 w-8 items-center justify-center rounded-r-lg text-gray-600 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    @click="emit('increment', item.productId)"
+                                >
+                                    <svg
+                                        class="h-4 w-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M12 4v16m8-8H4"
+                                        />
+                                    </svg>
+                                </button>
+                            </div>
+                            <span class="text-sm font-semibold text-gray-900">{{
+                                formatTaka(item.price * item.qty)
+                            }}</span>
+                        </div>
+                    </div>
+                </li>
+            </ul>
+
+            <div class="space-y-2.5 border-t border-gray-100 px-5 py-4 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Subtotal</span>
+                    <span class="font-medium text-gray-900">{{
+                        formatTaka(subtotal)
+                    }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">
+                        Delivery
+                        <span v-if="deliveryNote" class="text-gray-400">{{
+                            deliveryNote
+                        }}</span>
+                    </span>
+                    <span class="font-medium text-gray-900">{{
+                        formatTaka(deliveryCharge)
+                    }}</span>
+                </div>
+                <div
+                    class="mt-2 flex justify-between border-t border-gray-100 pt-3 text-base"
+                >
+                    <span class="font-semibold text-gray-900">Total</span>
+                    <span class="font-bold text-shop-primary-600">{{
+                        formatTaka(grandTotal)
+                    }}</span>
+                </div>
+            </div>
+
+            <div class="px-5 pb-5">
+                <button
+                    type="submit"
+                    class="w-full rounded-lg bg-shop-primary-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-shop-primary-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="isEmpty || processing"
+                >
+                    {{ processing ? 'Processing…' : submitLabel }}
+                </button>
+                <p
+                    class="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-400"
+                >
+                    <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                        />
+                    </svg>
+                    Your information is safe & encrypted
+                </p>
+            </div>
+        </div>
+    </div>
+</template>
+
+
+
+
