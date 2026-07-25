@@ -1,14 +1,29 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
 import ShopLogo from '@/components/shop/ShopLogo.vue';
 import { useShopCart } from '@/composables/shop/useShopCart';
 import { useShopCatalog } from '@/composables/shop/useShopCatalog';
 import { useShopUi } from '@/composables/shop/useShopUi';
 import { useShopWishlist } from '@/composables/shop/useShopWishlist';
 import { home, login } from '@/routes';
-import shop from '@/routes/shop';
 import customer from '@/routes/customer';
+import shop from '@/routes/shop';
+
+interface SuggestionCategory {
+    name: string;
+    slug: string;
+    url: string;
+}
+
+interface SuggestionProduct {
+    id: number;
+    name: string;
+    slug: string;
+    price: number;
+    img: string | null;
+    url: string;
+}
 
 const page = usePage();
 const { openMobileMenu } = useShopUi();
@@ -21,12 +36,22 @@ const isHomePage = computed(() => page.component === 'shop/Home');
 const isCartPage = computed(() => page.component === 'shop/Cart');
 const isWishlistPage = computed(() => page.component === 'shop/Wishlist');
 const isCheckoutPage = computed(() => page.component === 'shop/Checkout');
+
 const showMobileSearch = ref(false);
+const searchQuery = ref('');
+const suggestions = ref<{
+    categories: SuggestionCategory[];
+    products: SuggestionProduct[];
+}>({
+    categories: [],
+    products: [],
+});
+const isLoading = ref(false);
+const showDropdown = ref(false);
 
-// লগিন স্ট্যাটাস চেক
+let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
 const isAuthenticated = computed(() => !!page.props.auth?.user);
-
-// Account link href: লগিন থাকলে dashboard, না থাকলে login পেজ
 const accountHref = computed(() =>
     isAuthenticated.value ? customer.dashboard() : login(),
 );
@@ -35,12 +60,53 @@ function toggleMobileSearch(): void {
     showMobileSearch.value = !showMobileSearch.value;
 }
 
+// ইনপুট টাইপ করার সময় সাজেশন ফেচ করার লজিক (Debounced)
 function handleSearchInput(event: Event): void {
-    if (!isShopPage.value) {
+    const val = (event.target as HTMLInputElement).value;
+    searchQuery.value = val;
+
+    if (isShopPage.value) {
+        setSearch(val);
+    }
+
+    if (debounceTimeout) clearTimeout(debounceTimeout);
+
+    if (val.trim().length < 2) {
+        suggestions.value = { categories: [], products: [] };
+        showDropdown.value = false;
         return;
     }
 
-    setSearch((event.target as HTMLInputElement).value);
+    debounceTimeout = setTimeout(async () => {
+        isLoading.value = true;
+        try {
+            const res = await fetch(
+                `/api/search-suggestions?q=${encodeURIComponent(val)}`,
+            );
+            if (res.ok) {
+                suggestions.value = await res.json();
+                showDropdown.value = true;
+            }
+        } catch (e) {
+            console.error('Search suggestion error:', e);
+        } finally {
+            isLoading.value = false;
+        }
+    }, 300);
+}
+
+// এন্টার বা সাবমিট চাপলে Shop পেজে ফিল্টার সহ রিডাইরেক্ট
+function submitSearch(): void {
+    if (!searchQuery.value.trim()) return;
+    showDropdown.value = false;
+    router.get(shop.index(), { search: searchQuery.value.trim() });
+}
+
+function closeDropdown(): void {
+    // মাউস ক্লিকে নেভিগেশনের জন্য সামান্য বিলম্ব (delay)
+    setTimeout(() => {
+        showDropdown.value = false;
+    }, 250);
 }
 </script>
 
@@ -53,9 +119,6 @@ function handleSearchInput(event: Event): void {
                 <div class="flex items-center gap-2">
                     <button
                         type="button"
-                        aria-label="Open menu"
-                        aria-expanded="false"
-                        aria-controls="mobileDrawer"
                         class="-ml-1 inline-flex h-11 w-11 items-center justify-center rounded-lg text-[#737373] hover:bg-black/5 focus:ring-2 focus:ring-[#87E64B] focus:outline-none lg:hidden"
                         @click="openMobileMenu"
                     >
@@ -77,18 +140,16 @@ function handleSearchInput(event: Event): void {
                     <ShopLogo />
                 </div>
 
-                <!-- Envato Inspired Navigation Setup -->
                 <nav
                     class="hidden h-16 items-center gap-1 lg:flex"
                     aria-label="Primary"
                 >
                     <Link
                         :href="home()"
-                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] transition-colors duration-200 hover:text-[#B9B9B9]"
+                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] hover:text-[#B9B9B9]"
                         :class="isHomePage ? 'text-gray-900' : ''"
                     >
                         Home
-                        <!-- Active / Hover Animation Line -->
                         <span
                             class="absolute bottom-0 left-0 h-0.75 bg-[#87E64B] transition-all duration-300"
                             :class="
@@ -99,7 +160,7 @@ function handleSearchInput(event: Event): void {
 
                     <Link
                         :href="shop.index()"
-                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] transition-colors duration-200 hover:text-[#B9B9B9]"
+                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] hover:text-[#B9B9B9]"
                         :class="isShopPage ? 'text-gray-900' : ''"
                     >
                         Shop
@@ -113,7 +174,7 @@ function handleSearchInput(event: Event): void {
 
                     <Link
                         href="/#categories"
-                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] transition-colors duration-200 hover:text-[#B9B9B9]"
+                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] hover:text-[#B9B9B9]"
                     >
                         Categories
                         <span
@@ -123,7 +184,7 @@ function handleSearchInput(event: Event): void {
 
                     <Link
                         href="/#bestselling"
-                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] transition-colors duration-200 hover:text-[#B9B9B9]"
+                        class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] hover:text-[#B9B9B9]"
                     >
                         Best Selling
                         <span
@@ -132,43 +193,126 @@ function handleSearchInput(event: Event): void {
                     </Link>
                 </nav>
 
-                <div class="hidden max-w-md flex-1 md:block">
-                    <label for="searchDesktop" class="sr-only"
-                        >Search products</label
-                    >
-                    <div class="relative">
-                        <span
-                            class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[#737373]"
-                        >
-                            <svg
-                                class="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                stroke-width="2"
+                <!-- Desktop Search Bar With Dropdown Suggestions -->
+                <div class="relative hidden max-w-md flex-1 md:block">
+                    <form @submit.prevent="submitSearch">
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[#737373]"
                             >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
-                                />
-                            </svg>
-                        </span>
-                        <input
-                            id="searchDesktop"
-                            type="search"
-                            :value="isShopPage ? search : ''"
-                            placeholder="Search for products…"
-                            class="w-full rounded-lg border border-gray-300 bg-white/50 py-2.5 pr-4 pl-10 text-sm text-gray-900 transition placeholder:text-gray-400 focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
-                            @input="handleSearchInput"
-                        />
+                                <svg
+                                    class="h-5 w-5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                                    />
+                                </svg>
+                            </span>
+                            <input
+                                id="searchDesktop"
+                                type="search"
+                                :value="
+                                    searchQuery || (isShopPage ? search : '')
+                                "
+                                placeholder="Search for products…"
+                                class="w-full rounded-lg border border-gray-300 bg-white/50 py-2.5 pr-4 pl-10 text-sm text-gray-900 transition placeholder:text-gray-400 focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
+                                autocomplete="off"
+                                @input="handleSearchInput"
+                                @focus="showDropdown = true"
+                                @blur="closeDropdown"
+                                @keydown.enter="submitSearch"
+                            />
+                        </div>
+                    </form>
+
+                    <!-- Suggestions Dropdown Menu -->
+                    <div
+                        v-if="
+                            showDropdown &&
+                            (suggestions.categories.length > 0 ||
+                                suggestions.products.length > 0 ||
+                                isLoading)
+                        "
+                        class="absolute top-full right-0 left-0 z-50 mt-1 max-h-96 overflow-y-auto rounded-xl border border-gray-100 bg-white p-2 shadow-xl"
+                    >
+                        <div
+                            v-if="isLoading"
+                            class="p-3 text-center text-xs text-gray-500"
+                        >
+                            Searching...
+                        </div>
+
+                        <template v-else>
+                            <!-- Category Suggestions -->
+                            <div
+                                v-if="suggestions.categories.length > 0"
+                                class="mb-2"
+                            >
+                                <div
+                                    class="px-3 py-1 text-xs font-semibold tracking-wider text-gray-400 uppercase"
+                                >
+                                    Categories
+                                </div>
+                                <Link
+                                    v-for="cat in suggestions.categories"
+                                    :key="cat.slug"
+                                    :href="cat.url"
+                                    class="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    @click="showDropdown = false"
+                                >
+                                    <span>{{ cat.name }}</span>
+                                    <span class="text-xs text-gray-400"
+                                        >Category</span
+                                    >
+                                </Link>
+                            </div>
+
+                            <!-- Product Suggestions -->
+                            <div v-if="suggestions.products.length > 0">
+                                <div
+                                    class="px-3 py-1 text-xs font-semibold tracking-wider text-gray-400 uppercase"
+                                >
+                                    Products
+                                </div>
+                                <Link
+                                    v-for="prod in suggestions.products"
+                                    :key="prod.id"
+                                    :href="prod.url"
+                                    class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    @click="showDropdown = false"
+                                >
+                                    <img
+                                        v-if="prod.img"
+                                        :src="prod.img"
+                                        :alt="prod.name"
+                                        class="h-9 w-9 rounded-md object-cover"
+                                    />
+                                    <div class="flex-1 overflow-hidden">
+                                        <div
+                                            class="truncate text-sm font-medium text-gray-900"
+                                        >
+                                            {{ prod.name }}
+                                        </div>
+                                        <div class="text-xs text-gray-500">
+                                            ৳ {{ prod.price }}
+                                        </div>
+                                    </div>
+                                </Link>
+                            </div>
+                        </template>
                     </div>
                 </div>
 
+                <!-- Right Action Icons (Account, Wishlist, Cart) -->
                 <div class="flex items-center gap-1">
                     <button
                         type="button"
-                        aria-label="Search"
                         class="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[#737373] hover:bg-black/5 focus:ring-2 focus:ring-[#87E64B] focus:outline-none md:hidden"
                         @click="toggleMobileSearch"
                     >
@@ -189,7 +333,6 @@ function handleSearchInput(event: Event): void {
 
                     <Link
                         :href="accountHref"
-                        aria-label="Account"
                         class="hidden h-11 w-11 items-center justify-center rounded-lg text-[#737373] hover:bg-black/5 focus:ring-2 focus:ring-[#87E64B] focus:outline-none sm:inline-flex"
                     >
                         <svg
@@ -209,7 +352,6 @@ function handleSearchInput(event: Event): void {
 
                     <Link
                         :href="shop.wishlist()"
-                        :aria-label="`Wishlist, ${wishCount} items`"
                         class="relative inline-flex h-11 w-11 items-center justify-center rounded-lg focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
                         :class="
                             isWishlistPage
@@ -236,9 +378,9 @@ function handleSearchInput(event: Event): void {
                             {{ wishCount }}
                         </span>
                     </Link>
+
                     <Link
                         :href="shop.cart()"
-                        :aria-label="`Cart, ${cartQty} items`"
                         class="relative inline-flex h-11 w-11 items-center justify-center rounded-lg focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
                         :class="
                             isCartPage || isCheckoutPage
@@ -268,36 +410,120 @@ function handleSearchInput(event: Event): void {
                 </div>
             </div>
 
-            <div v-show="showMobileSearch" class="pb-3 md:hidden">
-                <label for="searchMobileHeader" class="sr-only"
-                    >Search products</label
-                >
-                <div class="relative">
-                    <span
-                        class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[#737373]"
-                    >
-                        <svg
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            stroke-width="2"
+            <!-- Mobile Search Bar With Dropdown Suggestions -->
+            <div
+                v-show="showMobileSearch"
+                class="relative border-t border-gray-100/50 pt-2 pb-3 md:hidden"
+            >
+                <form @submit.prevent="submitSearch">
+                    <div class="relative">
+                        <span
+                            class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[#737373]"
                         >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
-                            />
-                        </svg>
-                    </span>
-                    <input
-                        id="searchMobileHeader"
-                        type="search"
-                        :value="isShopPage ? search : ''"
-                        placeholder="Search for products…"
-                        class="w-full rounded-lg border border-gray-300 bg-white/50 py-2.5 pr-4 pl-10 text-sm focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
-                        @input="handleSearchInput"
-                    />
+                            <svg
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="2"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                                />
+                            </svg>
+                        </span>
+                        <input
+                            id="searchMobileHeader"
+                            type="search"
+                            :value="searchQuery || (isShopPage ? search : '')"
+                            placeholder="Search for products…"
+                            class="w-full rounded-lg border border-gray-300 bg-white/80 py-2.5 pr-4 pl-10 text-sm text-gray-900 focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
+                            autocomplete="off"
+                            @input="handleSearchInput"
+                            @focus="showDropdown = true"
+                            @blur="closeDropdown"
+                            @keydown.enter="submitSearch"
+                        />
+                    </div>
+                </form>
+
+                <!-- Mobile Suggestions Dropdown -->
+                <div
+                    v-if="
+                        showDropdown &&
+                        (suggestions.categories.length > 0 ||
+                            suggestions.products.length > 0 ||
+                            isLoading)
+                    "
+                    class="absolute top-full right-0 left-0 z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-gray-100 bg-white p-2 shadow-xl"
+                >
+                    <div
+                        v-if="isLoading"
+                        class="p-3 text-center text-xs text-gray-500"
+                    >
+                        Searching...
+                    </div>
+
+                    <template v-else>
+                        <!-- Mobile Category Suggestions -->
+                        <div
+                            v-if="suggestions.categories.length > 0"
+                            class="mb-2"
+                        >
+                            <div
+                                class="px-3 py-1 text-xs font-semibold tracking-wider text-gray-400 uppercase"
+                            >
+                                Categories
+                            </div>
+                            <Link
+                                v-for="cat in suggestions.categories"
+                                :key="cat.slug"
+                                :href="cat.url"
+                                class="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-gray-700 active:bg-gray-100"
+                                @click="showDropdown = false"
+                            >
+                                <span>{{ cat.name }}</span>
+                                <span class="text-xs text-gray-400"
+                                    >Category</span
+                                >
+                            </Link>
+                        </div>
+
+                        <!-- Mobile Product Suggestions -->
+                        <div v-if="suggestions.products.length > 0">
+                            <div
+                                class="px-3 py-1 text-xs font-semibold tracking-wider text-gray-400 uppercase"
+                            >
+                                Products
+                            </div>
+                            <Link
+                                v-for="prod in suggestions.products"
+                                :key="prod.id"
+                                :href="prod.url"
+                                class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 active:bg-gray-100"
+                                @click="showDropdown = false"
+                            >
+                                <img
+                                    v-if="prod.img"
+                                    :src="prod.img"
+                                    :alt="prod.name"
+                                    class="h-9 w-9 rounded-md object-cover"
+                                />
+                                <div class="flex-1 overflow-hidden">
+                                    <div
+                                        class="truncate text-sm font-medium text-gray-900"
+                                    >
+                                        {{ prod.name }}
+                                    </div>
+                                    <div class="text-xs text-gray-500">
+                                        ৳ {{ prod.price }}
+                                    </div>
+                                </div>
+                            </Link>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>

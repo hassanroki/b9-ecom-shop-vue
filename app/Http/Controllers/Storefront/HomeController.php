@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection as SupportCollection;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Storage;
+use App\Support\ImageUrl;
 
 class HomeController extends Controller
 {
@@ -54,6 +56,8 @@ class HomeController extends Controller
     /**
      * @return list<array{name: string, img: string, href: string}>
      */
+
+
     private function categories(): array
     {
         return Category::query()
@@ -62,7 +66,11 @@ class HomeController extends Controller
             ->get(['name', 'slug', 'image'])
             ->map(fn(Category $category): array => [
                 'name' => $category->name,
-                'img' => $category->image,
+                'img' => $category->image
+                    ? (str_starts_with($category->image, 'http')
+                        ? $category->image
+                        : Storage::url($category->image))
+                    : null,
                 'href' => route('shop.index', ['category' => $category->name]),
             ])
             ->all();
@@ -127,7 +135,7 @@ class HomeController extends Controller
                 'oldPrice' => $product->compare_at_price !== null
                     ? (float) $product->compare_at_price
                     : null,
-                'img' => $primaryImage?->image_path ?? '',
+                'img' => ImageUrl::resolve($primaryImage?->image_path),
                 'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
                 'reviews' => (int) $product->reviews_count,
                 'inStock' => $product->stock_status === 'in_stock',

@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { Form, Head, Link, router } from '@inertiajs/vue3';
-import { Eye, Pencil, Plus, Search, Trash2 } from '@lucide/vue';
+import {
+    Eye,
+    Pencil,
+    Plus,
+    Search,
+    Trash2,
+    X,
+    Tag,
+    Calendar,
+    Percent,
+} from 'lucide-vue-next';
 import CouponController from '@/actions/App/Http/Controllers/Admin/CouponController';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
@@ -74,50 +84,63 @@ watch([search, status], () => {
         );
     }, 400);
 });
+
+const clearSearch = () => {
+    search.value = '';
+};
 </script>
 
 <template>
     <Head title="Coupons" />
 
-    <div
-        class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
-    >
+    <div class="flex h-full flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <!-- Top Bar: Header & Primary Actions -->
         <div
-            class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
+            class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
         >
             <Heading
                 title="Coupons"
-                description="Manage discount coupons for your store."
+                description="Manage and monitor discount coupons for your store."
             />
 
-            <Button as-child>
+            <Button
+                as-child
+                class="shrink-0 shadow-sm transition-all hover:shadow"
+            >
                 <Link :href="create()">
-                    <Plus class="size-4" />
+                    <Plus class="mr-1.5 size-4" />
                     Add Coupon
                 </Link>
             </Button>
         </div>
 
-        <div
-            class="flex flex-col gap-4 rounded-xl border border-sidebar-border/70 p-4 lg:flex-row"
-        >
+        <!-- Filter & Search Controls -->
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div class="relative flex-1">
                 <Search
                     class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
                 />
                 <Input
                     v-model="search"
-                    class="pl-10"
-                    placeholder="Search coupon by name or code..."
+                    class="bg-background pr-9 pl-9 shadow-xs transition-shadow focus-visible:ring-1"
+                    placeholder="Search by name or code..."
                 />
+                <button
+                    v-if="search"
+                    type="button"
+                    @click="clearSearch"
+                    class="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                    <X class="size-4" />
+                </button>
             </div>
 
             <Select v-model="status">
-                <SelectTrigger class="w-full lg:w-[220px]">
+                <SelectTrigger class="w-full bg-background shadow-xs sm:w-45">
                     <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="all">All Statuses</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
                     <SelectItem value="expired">Expired</SelectItem>
@@ -126,81 +149,116 @@ watch([search, status], () => {
             </Select>
         </div>
 
+        <!-- Content Card Area -->
         <div
-            class="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
+            class="overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs"
         >
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-[1200px] text-sm">
-                    <thead class="border-b bg-muted/40 text-left">
+            <!-- Desktop View: Table -->
+            <div class="hidden overflow-x-auto md:block">
+                <table class="w-full text-left text-sm">
+                    <thead
+                        class="border-b bg-muted/30 text-xs tracking-wider text-muted-foreground uppercase"
+                    >
                         <tr>
-                            <th class="px-4 py-3 font-medium">Code</th>
-                            <th class="px-4 py-3 font-medium">Coupon</th>
-                            <th class="px-4 py-3 font-medium">Discount</th>
-                            <th class="px-4 py-3 font-medium">Usage</th>
-                            <th class="px-4 py-3 font-medium">Validity</th>
-                            <th class="px-4 py-3 font-medium">Status</th>
-                            <th class="px-4 py-3 text-right font-medium">
+                            <th class="px-6 py-3.5 font-semibold">Code</th>
+                            <th class="px-6 py-3.5 font-semibold">Coupon</th>
+                            <th class="px-6 py-3.5 font-semibold">Discount</th>
+                            <th class="px-6 py-3.5 font-semibold">Usage</th>
+                            <th class="px-6 py-3.5 font-semibold">Validity</th>
+                            <th class="px-6 py-3.5 font-semibold">Status</th>
+                            <th class="px-6 py-3.5 text-right font-semibold">
                                 Actions
                             </th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="divide-y divide-border">
                         <tr
                             v-for="coupon in coupons.data"
                             :key="coupon.id"
-                            class="border-b last:border-b-0"
+                            class="transition-colors hover:bg-muted/20"
                         >
-                            <td class="px-4 py-3">
-                                <Badge variant="outline">
+                            <!-- Code -->
+                            <td class="px-6 py-4 font-mono font-medium">
+                                <Badge
+                                    variant="secondary"
+                                    class="font-mono text-xs tracking-wide"
+                                >
                                     {{ coupon.code }}
                                 </Badge>
                             </td>
-                            <td class="px-4 py-3">
-                                <div class="font-medium">
+
+                            <!-- Coupon Name & Desc -->
+                            <td class="px-6 py-4">
+                                <div class="font-medium text-foreground">
                                     {{ coupon.name }}
                                 </div>
                                 <div
                                     v-if="coupon.description"
-                                    class="mt-1 text-xs text-muted-foreground"
+                                    class="mt-0.5 line-clamp-1 text-xs text-muted-foreground"
                                 >
                                     {{ coupon.description }}
                                 </div>
                             </td>
-                            <td class="px-4 py-3">
+
+                            <!-- Discount -->
+                            <td class="px-6 py-4">
                                 <Badge
                                     :variant="
                                         coupon.type === 'percentage'
                                             ? 'default'
-                                            : 'secondary'
+                                            : 'outline'
                                     "
+                                    class="font-semibold"
                                 >
                                     {{ coupon.formatted_discount }}
                                 </Badge>
                             </td>
-                            <td class="px-4 py-3">
-                                <div class="font-medium">
-                                    {{ coupon.used_count }}
-                                    <span v-if="coupon.usage_limit">
-                                        / {{ coupon.usage_limit }}
+
+                            <!-- Usage -->
+                            <td class="px-6 py-4 text-sm">
+                                <span class="font-medium text-foreground">{{
+                                    coupon.used_count
+                                }}</span>
+                                <span
+                                    v-if="coupon.usage_limit"
+                                    class="text-muted-foreground"
+                                >
+                                    / {{ coupon.usage_limit }}
+                                </span>
+                                <span
+                                    v-else
+                                    class="text-xs text-muted-foreground"
+                                >
+                                    / ∞
+                                </span>
+                            </td>
+
+                            <!-- Validity -->
+                            <td class="px-6 py-4">
+                                <div class="flex flex-col gap-0.5 text-xs">
+                                    <span class="text-muted-foreground">
+                                        From:
+                                        <strong
+                                            class="font-normal text-foreground"
+                                            >{{
+                                                coupon.starts_at ?? 'Immediate'
+                                            }}</strong
+                                        >
                                     </span>
-                                    <span v-else class="text-muted-foreground">
-                                        / Unlimited
+                                    <span class="text-muted-foreground">
+                                        Until:
+                                        <strong
+                                            class="font-normal text-foreground"
+                                            >{{
+                                                coupon.expires_at ?? 'Never'
+                                            }}</strong
+                                        >
                                     </span>
                                 </div>
                             </td>
-                            <td class="px-4 py-3">
-                                <div class="space-y-1 text-xs">
-                                    <div>
-                                        <span class="font-medium">Start:</span>
-                                        {{ coupon.starts_at ?? '-' }}
-                                    </div>
-                                    <div>
-                                        <span class="font-medium">Expire:</span>
-                                        {{ coupon.expires_at ?? 'Never' }}
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="px-4 py-3">
+
+                            <!-- Status -->
+                            <td class="px-6 py-4">
                                 <Badge
                                     :variant="
                                         coupon.status === 'Active'
@@ -209,42 +267,53 @@ watch([search, status], () => {
                                               ? 'secondary'
                                               : 'destructive'
                                     "
+                                    class="capitalize"
                                 >
                                     {{ coupon.status }}
                                 </Badge>
                             </td>
-                            <td class="px-4 py-3">
+
+                            <!-- Actions -->
+                            <td class="px-6 py-4 text-right">
                                 <div
-                                    class="flex items-center justify-end gap-2"
+                                    class="flex items-center justify-end gap-1.5"
                                 >
                                     <Button
                                         as-child
-                                        variant="outline"
-                                        size="sm"
+                                        variant="ghost"
+                                        size="icon"
+                                        class="size-8"
                                     >
-                                        <Link :href="show(coupon.id)">
+                                        <Link
+                                            :href="show(coupon.id)"
+                                            title="View"
+                                        >
                                             <Eye class="size-4" />
-                                            View
                                         </Link>
                                     </Button>
+
                                     <Button
                                         as-child
-                                        variant="outline"
-                                        size="sm"
+                                        variant="ghost"
+                                        size="icon"
+                                        class="size-8"
                                     >
-                                        <Link :href="edit(coupon.id)">
+                                        <Link
+                                            :href="edit(coupon.id)"
+                                            title="Edit"
+                                        >
                                             <Pencil class="size-4" />
-                                            Edit
                                         </Link>
                                     </Button>
+
                                     <Dialog>
                                         <DialogTrigger as-child>
                                             <Button
-                                                variant="destructive"
-                                                size="sm"
+                                                variant="ghost"
+                                                size="icon"
+                                                class="size-8 text-destructive hover:text-destructive"
                                             >
                                                 <Trash2 class="size-4" />
-                                                Delete
                                             </Button>
                                         </DialogTrigger>
                                         <DialogContent>
@@ -260,24 +329,30 @@ watch([search, status], () => {
                                                 v-slot="{ processing }"
                                             >
                                                 <DialogHeader>
-                                                    <DialogTitle>
-                                                        Delete Coupon?
-                                                    </DialogTitle>
+                                                    <DialogTitle
+                                                        >Delete
+                                                        Coupon?</DialogTitle
+                                                    >
                                                     <DialogDescription>
-                                                        This will permanently
-                                                        remove
-                                                        <strong>{{
-                                                            coupon.code
-                                                        }}</strong>
-                                                        from your store.
+                                                        Are you sure you want to
+                                                        delete
+                                                        <strong
+                                                            class="text-foreground"
+                                                            >{{
+                                                                coupon.code
+                                                            }}</strong
+                                                        >? This action cannot be
+                                                        undone.
                                                     </DialogDescription>
                                                 </DialogHeader>
 
-                                                <DialogFooter class="gap-2">
+                                                <DialogFooter
+                                                    class="mt-4 gap-2"
+                                                >
                                                     <DialogClose as-child>
                                                         <Button
                                                             type="button"
-                                                            variant="secondary"
+                                                            variant="outline"
                                                         >
                                                             Cancel
                                                         </Button>
@@ -296,39 +371,210 @@ watch([search, status], () => {
                                 </div>
                             </td>
                         </tr>
-                        <tr v-if="coupons.data.length === 0">
-                            <td
-                                colspan="7"
-                                class="px-4 py-12 text-center text-muted-foreground"
-                            >
-                                No coupons found.
-                            </td>
-                        </tr>
                     </tbody>
                 </table>
             </div>
 
+            <!-- Mobile View: Responsive Cards -->
+            <div class="divide-y divide-border md:hidden">
+                <div
+                    v-for="coupon in coupons.data"
+                    :key="coupon.id"
+                    class="flex flex-col gap-3 p-4 transition-colors hover:bg-muted/10"
+                >
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <Badge
+                                    variant="secondary"
+                                    class="font-mono text-xs"
+                                >
+                                    {{ coupon.code }}
+                                </Badge>
+                                <Badge
+                                    :variant="
+                                        coupon.status === 'Active'
+                                            ? 'default'
+                                            : coupon.status === 'Scheduled'
+                                              ? 'secondary'
+                                              : 'destructive'
+                                    "
+                                    class="px-1.5 py-0 text-[10px]"
+                                >
+                                    {{ coupon.status }}
+                                </Badge>
+                            </div>
+                            <h4 class="mt-1.5 font-medium text-foreground">
+                                {{ coupon.name }}
+                            </h4>
+                        </div>
+                        <Badge
+                            :variant="
+                                coupon.type === 'percentage'
+                                    ? 'default'
+                                    : 'outline'
+                            "
+                        >
+                            {{ coupon.formatted_discount }}
+                        </Badge>
+                    </div>
+
+                    <p
+                        v-if="coupon.description"
+                        class="line-clamp-2 text-xs text-muted-foreground"
+                    >
+                        {{ coupon.description }}
+                    </p>
+
+                    <div
+                        class="grid grid-cols-2 gap-2 pt-1 text-xs text-muted-foreground"
+                    >
+                        <div class="flex items-center gap-1.5">
+                            <Tag class="size-3.5 shrink-0" />
+                            <span>
+                                Used:
+                                <strong class="font-normal text-foreground">{{
+                                    coupon.used_count
+                                }}</strong>
+                                <span v-if="coupon.usage_limit"
+                                    >/{{ coupon.usage_limit }}</span
+                                >
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <Calendar class="size-3.5 shrink-0" />
+                            <span class="truncate">
+                                {{
+                                    coupon.expires_at
+                                        ? `Exp: ${coupon.expires_at}`
+                                        : 'Never expires'
+                                }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div
+                        class="flex items-center justify-end gap-2 border-t border-border/50 pt-2"
+                    >
+                        <Button
+                            as-child
+                            variant="outline"
+                            size="sm"
+                            class="h-8 text-xs"
+                        >
+                            <Link :href="show(coupon.id)">
+                                <Eye class="mr-1 size-3.5" /> View
+                            </Link>
+                        </Button>
+                        <Button
+                            as-child
+                            variant="outline"
+                            size="sm"
+                            class="h-8 text-xs"
+                        >
+                            <Link :href="edit(coupon.id)">
+                                <Pencil class="mr-1 size-3.5" /> Edit
+                            </Link>
+                        </Button>
+
+                        <Dialog>
+                            <DialogTrigger as-child>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-8 text-xs text-destructive hover:bg-destructive/10"
+                                >
+                                    <Trash2 class="mr-1 size-3.5" /> Delete
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <Form
+                                    v-bind="
+                                        CouponController.destroy.form(coupon.id)
+                                    "
+                                    :options="{ preserveScroll: true }"
+                                    v-slot="{ processing }"
+                                >
+                                    <DialogHeader>
+                                        <DialogTitle
+                                            >Delete Coupon?</DialogTitle
+                                        >
+                                        <DialogDescription>
+                                            This will permanently delete
+                                            <strong>{{ coupon.code }}</strong
+                                            >.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <DialogFooter class="mt-4 gap-2">
+                                        <DialogClose as-child>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                >Cancel</Button
+                                            >
+                                        </DialogClose>
+                                        <Button
+                                            type="submit"
+                                            variant="destructive"
+                                            :disabled="processing"
+                                        >
+                                            Delete
+                                        </Button>
+                                    </DialogFooter>
+                                </Form>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div
+                v-if="coupons.data.length === 0"
+                class="flex flex-col items-center justify-center p-12 text-center"
+            >
+                <div
+                    class="flex size-12 items-center justify-center rounded-full bg-muted"
+                >
+                    <Tag class="size-6 text-muted-foreground" />
+                </div>
+                <h3 class="mt-4 text-base font-semibold text-foreground">
+                    No coupons found
+                </h3>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    Try adjusting your search query or filter options.
+                </p>
+            </div>
+
+            <!-- Pagination Container -->
             <div
                 v-if="coupons.links.length > 3"
-                class="flex flex-col items-center justify-between gap-4 border-t px-4 py-4 sm:flex-row"
+                class="flex flex-col items-center justify-between gap-4 border-t px-6 py-4 sm:flex-row"
             >
-                <div class="text-sm text-muted-foreground">
+                <div class="text-xs text-muted-foreground">
                     Showing
-                    <span class="font-medium">{{ coupons.from ?? 0 }}</span>
+                    <span class="font-medium text-foreground">{{
+                        coupons.from ?? 0
+                    }}</span>
                     to
-                    <span class="font-medium">{{ coupons.to ?? 0 }}</span>
+                    <span class="font-medium text-foreground">{{
+                        coupons.to ?? 0
+                    }}</span>
                     of
-                    <span class="font-medium">{{ coupons.total }}</span>
-                    coupons
+                    <span class="font-medium text-foreground">{{
+                        coupons.total
+                    }}</span>
+                    results
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex flex-wrap items-center gap-1.5">
                     <template v-for="link in coupons.links" :key="link.label">
                         <Button
                             v-if="link.url"
                             as-child
                             :variant="link.active ? 'default' : 'outline'"
                             size="sm"
+                            class="h-8 min-w-8 px-2.5 text-xs"
                         >
                             <Link
                                 :href="link.url"
@@ -340,9 +586,10 @@ watch([search, status], () => {
 
                         <Button
                             v-else
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             disabled
+                            class="h-8 min-w-8 px-2.5 text-xs"
                             v-html="link.label"
                         />
                     </template>

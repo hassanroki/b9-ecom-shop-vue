@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -166,6 +167,7 @@ class ShopController extends Controller
     private function mapCatalogProduct(Product $product): array
     {
         $primaryImage = $product->images->first();
+        $imagePath = $primaryImage?->image_path;
 
         return [
             'id' => $product->id,
@@ -175,7 +177,9 @@ class ShopController extends Controller
             'oldPrice' => $product->compare_at_price !== null
                 ? (float) $product->compare_at_price
                 : null,
-            'img' => $primaryImage?->image_path ?? '',
+            'img' => $imagePath
+                ? (str_starts_with($imagePath, 'http') ? $imagePath : Storage::url($imagePath))
+                : null,
             'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
             'reviews' => (int) $product->reviews_count,
             'inStock' => $product->stock_status === 'in_stock',

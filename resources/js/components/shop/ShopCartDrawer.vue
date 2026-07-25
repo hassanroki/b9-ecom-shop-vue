@@ -17,10 +17,10 @@ const {
 
 <template>
     <div>
-        <div class="fixed inset-0 z-[60] bg-black/40" :class="isCartOpen ? 'block' : 'hidden'" @click="closeCart" />
+        <div class="fixed inset-0 z-60 bg-black/40" :class="isCartOpen ? 'block' : 'hidden'" @click="closeCart" />
 
         <aside
-            class="fixed inset-y-0 right-0 z-[70] flex w-96 max-w-[90%] flex-col bg-white shadow-xl transition-transform duration-300 ease-in-out"
+            class="fixed inset-y-0 right-0 z-70 flex w-96 max-w-[90%] flex-col bg-white shadow-xl transition-transform duration-300 ease-in-out"
             :class="isCartOpen ? 'translate-x-0' : 'translate-x-full'" role="dialog" aria-modal="true"
             aria-label="Shopping cart">
             <div class="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-5">
@@ -58,7 +58,7 @@ const {
                 <div class="flex-1 overflow-y-auto px-5">
                     <div v-for="item in cart" :key="item.productId" class="flex gap-3 border-b border-gray-100 py-4">
                         <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
-                            <img :src="`https://images.unsplash.com/${item.img}?auto=format&fit=crop&w=120&q=70`"
+                            <img :src="item.img || '/images/product-placeholder.png'"
                                 :alt="item.name" class="h-full w-full object-cover" />
                         </div>
                         <div class="min-w-0 flex-1">

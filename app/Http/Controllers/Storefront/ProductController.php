@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Review;
+use App\Support\ImageUrl;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Str;
@@ -80,7 +81,7 @@ class ProductController extends Controller
             'oldPrice' => $product->compare_at_price !== null
                 ? (float) $product->compare_at_price
                 : null,
-            'img' => $primaryImage?->image_path ?? '',
+            'img' => ImageUrl::resolve($primaryImage?->image_path),
             'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
             'reviews' => (int) $product->reviews_count,
             'inStock' => $product->stock_status === 'in_stock',
@@ -130,7 +131,7 @@ class ProductController extends Controller
                     'oldPrice' => $related->compare_at_price !== null
                         ? (float) $related->compare_at_price
                         : null,
-                    'img' => $primaryImage?->image_path ?? '',
+                    'img' => ImageUrl::resolve($primaryImage?->image_path),
                     'rating' => round((float) ($related->reviews_avg_rating ?? 0), 1),
                     'reviews' => (int) $related->reviews_count,
                     'inStock' => $related->stock_status === 'in_stock',
@@ -180,8 +181,8 @@ class ProductController extends Controller
 
         return $images
             ->map(fn(ProductImage $image): array => [
-                'full' => $this->imageUrl($image->image_path, 900, 75),
-                'thumb' => $this->imageUrl($image->image_path, 200, 70),
+                'full' => ImageUrl::resolve($image->image_path) ?? '',
+                'thumb' => ImageUrl::resolve($image->image_path) ?? '',
             ])
             ->values()
             ->all();
@@ -226,10 +227,6 @@ class ProductController extends Controller
 
     private function imageUrl(string $path, int $width, int $quality = 75): string
     {
-        if (Str::startsWith($path, ['http://', 'https://'])) {
-            return $path;
-        }
-
-        return "https://images.unsplash.com/{$path}?auto=format&fit=crop&w={$width}&q={$quality}";
+        return ImageUrl::resolve($path) ?? '';
     }
 }

@@ -25,27 +25,30 @@ class OrderController extends Controller
      */
     public function index(Request $request): Response
     {
-        $search = trim((string) $request->query('search', ''));
-        $status = (string) $request->query('status', '');
-        $paymentStatus = (string) $request->query('payment_status', '');
+        $search = trim((string) $request->input('search', ''));
+        $status = (string) $request->input('status', '');
+        $paymentStatus = (string) $request->input('payment_status', '');
+
+        $validStatuses = self::orderStatuses();
+        $validPaymentStatuses = self::paymentStatuses();
 
         $orders = Order::query()
             ->withCount('items')
             ->when($search !== '', function ($query) use ($search): void {
-                $query->where(function ($query) use ($search): void {
-                    $query->where('order_number', 'like', "%{$search}%")
+                $query->where(function ($q) use ($search): void {
+                    $q->where('order_number', 'like', "%{$search}%")
                         ->orWhere('customer_name', 'like', "%{$search}%")
                         ->orWhere('phone', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%");
                 });
             })
             ->when(
-                in_array($status, self::orderStatuses(), true),
-                fn($query) => $query->where('status', $status),
+                $status !== '' && in_array($status, $validStatuses, true),
+                fn($query) => $query->where('status', $status)
             )
             ->when(
-                in_array($paymentStatus, self::paymentStatuses(), true),
-                fn($query) => $query->where('payment_status', $paymentStatus),
+                $paymentStatus !== '' && in_array($paymentStatus, $validPaymentStatuses, true),
+                fn($query) => $query->where('payment_status', $paymentStatus)
             )
             ->orderByDesc('placed_at')
             ->orderByDesc('id')
@@ -56,11 +59,11 @@ class OrderController extends Controller
             'orders' => $orders,
             'filters' => [
                 'search' => $search,
-                'status' => in_array($status, self::orderStatuses(), true) ? $status : '',
-                'payment_status' => in_array($paymentStatus, self::paymentStatuses(), true) ? $paymentStatus : '',
+                'status' => in_array($status, $validStatuses, true) ? $status : '',
+                'payment_status' => in_array($paymentStatus, $validPaymentStatuses, true) ? $paymentStatus : '',
             ],
-            'statusOptions' => $this->statusOptions(self::orderStatuses()),
-            'paymentStatusOptions' => $this->statusOptions(self::paymentStatuses()),
+            'statusOptions' => $this->statusOptions($validStatuses),
+            'paymentStatusOptions' => $this->statusOptions($validPaymentStatuses),
         ]);
     }
 

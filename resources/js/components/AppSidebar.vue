@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import {
-    BookOpen,
-    FolderGit2,
+    ChevronRight,
     Heart,
     LayoutGrid,
     Package,
@@ -11,8 +11,6 @@ import {
     Ticket,
 } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
-import NavFooter from '@/components/NavFooter.vue';
-import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
 import {
     Sidebar,
@@ -24,14 +22,17 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
-import { index as categoriesIndex } from '@/routes/admin/categories';
+// 1. এখানে create সহ ইমপোর্ট করুন
+import {
+    index as categoriesIndex,
+    create as categoriesCreate,
+} from '@/routes/admin/categories';
 import { index as couponsIndex } from '@/routes/admin/coupons';
 import { index as ordersIndex } from '@/routes/admin/orders';
 import { index as productsIndex } from '@/routes/admin/products';
 import { index as wishlistsIndex } from '@/routes/admin/wishlists';
-import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
+const mainNavItems = ref([
     {
         title: 'Dashboard',
         href: dashboard(),
@@ -39,8 +40,13 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Categories',
-        href: categoriesIndex(),
         icon: Tags,
+        isOpen: false,
+        children: [
+            { title: 'All Categories', href: categoriesIndex() },
+            // 2. এখানে categoriesCreate() অথবা আপনার ইমপোর্ট করা create() বসিয়ে দিন
+            { title: 'Add Category', href: categoriesCreate() },
+        ],
     },
     {
         title: 'Products',
@@ -62,20 +68,13 @@ const mainNavItems: NavItem[] = [
         href: wishlistsIndex(),
         icon: Heart,
     },
-];
+]);
 
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: BookOpen,
-    },
-];
+const toggleSubmenu = (item: any) => {
+    if (item.children) {
+        item.isOpen = !item.isOpen;
+    }
+};
 </script>
 
 <template>
@@ -92,12 +91,54 @@ const footerNavItems: NavItem[] = [
             </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent>
-            <NavMain :items="mainNavItems" />
+        <SidebarContent class="px-2 py-4">
+            <div v-for="item in mainNavItems" :key="item.title" class="mb-1">
+                <!-- If item has children (Submenu) -->
+                <template v-if="item.children">
+                    <button
+                        @click="toggleSubmenu(item)"
+                        class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    >
+                        <div class="flex items-center gap-x-3">
+                            <component :is="item.icon" class="h-4 w-4" />
+                            <span>{{ item.title }}</span>
+                        </div>
+                        <ChevronRight
+                            class="h-4 w-4 transition-transform duration-200"
+                            :class="{ 'rotate-90': item.isOpen }"
+                        />
+                    </button>
+
+                    <!-- Submenu items -->
+                    <div
+                        v-show="item.isOpen"
+                        class="mt-1 ml-6 flex flex-col space-y-1 border-l border-sidebar-border pl-2"
+                    >
+                        <Link
+                            v-for="subItem in item.children"
+                            :key="subItem.title"
+                            :href="subItem.href"
+                            class="rounded-md px-3 py-1.5 text-sm text-neutral-600 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+                        >
+                            {{ subItem.title }}
+                        </Link>
+                    </div>
+                </template>
+
+                <!-- Normal Item without Children -->
+                <template v-else>
+                    <Link
+                        :href="item.href!"
+                        class="flex items-center gap-x-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    >
+                        <component :is="item.icon" class="h-4 w-4" />
+                        <span>{{ item.title }}</span>
+                    </Link>
+                </template>
+            </div>
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
             <NavUser />
         </SidebarFooter>
     </Sidebar>
