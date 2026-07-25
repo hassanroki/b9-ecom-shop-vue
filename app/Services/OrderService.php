@@ -50,7 +50,7 @@ class OrderService
             ]);
         }
 
-        $outOfStock = collect($items)->first(fn (array $item): bool => ! $item['inStock']);
+        $outOfStock = collect($items)->first(fn(array $item): bool => ! $item['inStock']);
 
         if ($outOfStock !== null) {
             throw ValidationException::withMessages([
@@ -59,7 +59,7 @@ class OrderService
         }
 
         $subtotal = collect($items)->sum(
-            fn (array $item): float => $item['price'] * $item['qty'],
+            fn(array $item): float => $item['price'] * $item['qty'],
         );
 
         $deliveryCharge = $this->deliveryChargeForDistrict($shipping['district']);
@@ -111,6 +111,61 @@ class OrderService
     }
 
     /**
+     * Update order status and payment status from the admin panel.
+     *
+     * @param  array{
+     *     status: string,
+     *     payment_status: string,
+     *     note?: string|null,
+     * }  $data
+     */
+    public function updateFromAdmin(Order $order, array $data, ?int $changedBy = null): Order
+    {
+        $statusChanged = $order->status !== $data['status'];
+        $paymentStatusChanged = $order->payment_status !== $data['payment_status'];
+        $note = filled($data['note'] ?? null) ? (string) $data['note'] : null;
+
+        if (! $statusChanged && ! $paymentStatusChanged && $note === null) {
+            return $order;
+        }
+
+        return DB::transaction(function () use ($order, $data, $changedBy, $statusChanged, $paymentStatusChanged, $note): Order {
+            $order->update([
+                'status' => $data['status'],
+                'payment_status' => $data['payment_status'],
+            ]);
+
+            if ($statusChanged || $paymentStatusChanged || $note !== null) {
+                OrderStatusHistory::create([
+                    'order_id' => $order->id,
+                    'status' => $data['status'],
+                    'note' => $note ?? $this->adminStatusChangeNote($statusChanged, $paymentStatusChanged, $data),
+                    'changed_by' => $changedBy,
+                    'created_at' => now(),
+                ]);
+            }
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * @param  array{status: string, payment_status: string}  $data
+     */
+    private function adminStatusChangeNote(bool $statusChanged, bool $paymentStatusChanged, array $data): string
+    {
+        if ($statusChanged && $paymentStatusChanged) {
+            return "Order status changed to {$data['status']} and payment status changed to {$data['payment_status']}.";
+        }
+
+        if ($statusChanged) {
+            return "Order status changed to {$data['status']}.";
+        }
+
+        return "Payment status changed to {$data['payment_status']}.";
+    }
+
+    /**
      * Generate a unique human-facing order number, e.g. SE-2026-000123.
      */
     private function generateOrderNumber(): string
@@ -120,7 +175,7 @@ class OrderService
 
         for ($attempt = 0; $attempt < 10; $attempt++) {
             $suffix = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
-            $orderNumber = $prefix.$suffix;
+            $orderNumber = $prefix . $suffix;
 
             if (! Order::where('order_number', $orderNumber)->exists()) {
                 return $orderNumber;

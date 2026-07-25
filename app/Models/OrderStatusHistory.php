@@ -15,7 +15,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class OrderStatusHistory extends Model
 {
-    //
     public const UPDATED_AT = null;
 
     /**

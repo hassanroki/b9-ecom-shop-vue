@@ -16,7 +16,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class OrderItem extends Model
 {
-    //
     /**
      * @return array<string, string>
      */
