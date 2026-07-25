@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import shop from '@/routes/shop';
+import customer from '@/routes/customer';
 
 const { orderNumber, total, paymentLabel } = defineProps<{
     orderNumber: string;
@@ -66,12 +67,12 @@ const { orderNumber, total, paymentLabel } = defineProps<{
             >
                 Continue Shopping
             </Link>
-            <button
-                type="button"
+            <Link
+                :href="customer.dashboard()"
                 class="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
             >
                 View Order
-            </button>
+            </Link>
         </div>
     </div>
 </template>
