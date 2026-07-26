@@ -30,9 +30,9 @@ class ProductSeeder extends Seeder
      */
     private const PRODUCTS = [
         [
-            'slug' => 'wireless-noise-cancelling-headphones',
-            'name' => 'Wireless Noise-Cancelling Headphones',
-            'category_slug' => 'electronics',
+            'slug' => 'manha-abaya-gown-gt1332',
+            'name' => 'MANHA ABAYA GOWN | GT-1332',
+            'category_slug' => 'dress',
             'price' => 6499.00,
             'compare_at_price' => 8999.00,
             'stock_status' => 'in_stock',
@@ -41,7 +41,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 980,
             'short_description' => 'Premium wireless noise-cancelling headphones with up to 40 hours of battery life and all-day comfort.',
             'description' => "The ShopEase Wireless Noise-Cancelling Headphones are engineered for listeners who refuse to compromise. Advanced hybrid active noise cancellation silences the world around you, while custom 40mm drivers deliver deep, balanced sound across every genre.\n\nDesigned for all-day comfort, the breathable memory-foam ear cushions and lightweight headband let you wear them from your morning commute to late-night sessions. With up to 40 hours of playback and fast charging — 10 minutes gives you 5 hours — you'll rarely reach for the cable.",
-            'image' => 'photo-1505740420928-5e560c06d30e',
+            'image' => 'https://cdn.manfarebd.com/glamtouch/media/lg/177168484367419356097_gt_1332_1.webp',
             'alt_text' => 'Wireless Noise-Cancelling Headphones',
         ],
         [
@@ -56,7 +56,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 870,
             'short_description' => 'Track workouts, heart rate, and sleep with a bright always-on display.',
             'description' => 'Stay on top of your health goals with the Smart Fitness Watch Series 6. Built-in GPS, heart-rate monitoring, and sleep tracking help you understand your body. Water-resistant design and a week-long battery make it perfect for everyday wear.',
-            'image' => 'photo-1523275335684-37898b6baf30',
+            'image' => 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&q=80',
             'alt_text' => 'Smart Fitness Watch Series 6',
         ],
         [
@@ -71,7 +71,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 760,
             'short_description' => 'Timeless leather sneakers with cushioned insoles for all-day comfort.',
             'description' => 'These Classic Leather Sneakers combine clean lines with premium materials. A cushioned footbed and durable rubber outsole keep you comfortable from city streets to weekend outings.',
-            'image' => 'photo-1542291026-7eec264c27ff',
+            'image' => 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80',
             'alt_text' => 'Classic Leather Sneakers',
         ],
         [
@@ -86,7 +86,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 540,
             'short_description' => 'Polarized lenses with full UV400 protection in a lightweight frame.',
             'description' => 'Shield your eyes in style with Premium Sunglasses UV400. Polarized lenses cut glare while the lightweight acetate frame sits comfortably all day.',
-            'image' => 'photo-1572635196237-14b3f281503f',
+            'image' => 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&q=80',
             'alt_text' => 'Premium Sunglasses UV400',
         ],
         [
@@ -101,7 +101,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 320,
             'short_description' => 'Slim 20L backpack with padded laptop sleeve and water-resistant fabric.',
             'description' => 'The Minimalist Backpack 20L is built for commuters and students. A padded laptop compartment, organizer pockets, and water-resistant exterior keep your essentials safe and dry.',
-            'image' => 'photo-1553062407-98eeb64c6a62',
+            'image' => 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800&q=80',
             'alt_text' => 'Minimalist Backpack 20L',
         ],
         [
@@ -116,7 +116,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 210,
             'short_description' => 'Handcrafted ceramic dripper and carafe for barista-quality pour-over at home.',
             'description' => 'Brew café-quality coffee at home with this Ceramic Pour-Over Coffee Set. The dripper and carafe are designed for even extraction and easy cleanup.',
-            'image' => 'photo-1495774856032-8b90bbb32b32',
+            'image' => 'https://images.unsplash.com/photo-1495774856032-8b90bbb32b32?w=800&q=80',
             'alt_text' => 'Ceramic Pour-Over Coffee Set',
         ],
         [
@@ -131,7 +131,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 430,
             'short_description' => 'Hot-swappable mechanical keyboard with per-key RGB lighting.',
             'description' => 'Type with precision on the Mechanical Keyboard RGB. Hot-swappable switches, durable PBT keycaps, and customizable per-key lighting make it a favorite for work and play.',
-            'image' => 'photo-1587829741301-dc798b83add3',
+            'image' => 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=800&q=80',
             'alt_text' => 'Mechanical Keyboard RGB',
         ],
         [
@@ -146,7 +146,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 150,
             'short_description' => 'Soft 100% cotton tee with a relaxed oversized fit.',
             'description' => 'A wardrobe staple in premium combed cotton. The relaxed oversized cut pairs easily with jeans, joggers, or layered under a jacket.',
-            'image' => 'photo-1521572163474-6864f9cf17ab',
+            'image' => 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800&q=80',
             'alt_text' => 'Cotton Oversized T-Shirt',
         ],
         [
@@ -161,7 +161,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 620,
             'short_description' => 'Compact waterproof speaker with 12-hour battery and deep bass.',
             'description' => 'Take your music anywhere with the Portable Bluetooth Speaker. IPX7 waterproofing, 12-hour playtime, and punchy bass make it ideal for outdoor adventures.',
-            'image' => 'photo-1608043152269-423dbba4e7e1',
+            'image' => 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=800&q=80',
             'alt_text' => 'Portable Bluetooth Speaker',
         ],
         [
@@ -176,7 +176,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 810,
             'short_description' => 'True wireless earbuds with active noise cancellation and wireless charging case.',
             'description' => 'Wireless Earbuds Pro deliver immersive sound in a pocket-sized package. Active noise cancellation, transparency mode, and a wireless charging case keep you connected on the go.',
-            'image' => 'photo-1590658268037-6bf12165a8df',
+            'image' => 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=800&q=80',
             'alt_text' => 'Wireless Earbuds Pro',
         ],
         [
@@ -191,7 +191,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 280,
             'short_description' => 'Set of three hand-poured soy candles in calming scents.',
             'description' => 'Create a cozy atmosphere with this Scented Soy Candle Set. Natural soy wax burns cleanly while lavender, vanilla, and sandalwood notes fill your space.',
-            'image' => 'photo-1602874801007-bd458bb1b8b6',
+            'image' => 'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800&q=80',
             'alt_text' => 'Scented Soy Candle Set',
         ],
         [
@@ -206,7 +206,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 360,
             'short_description' => 'Long-wear matte lipsticks in six flattering everyday shades.',
             'description' => 'The Matte Lipstick Collection offers rich pigment and a comfortable matte finish. Six versatile shades from nude to berry suit every skin tone.',
-            'image' => 'photo-1586495777744-4413f21062fa',
+            'image' => 'https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=800&q=80',
             'alt_text' => 'Matte Lipstick Collection',
         ],
         [
@@ -221,7 +221,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 290,
             'short_description' => 'Extra-thick non-slip yoga mat with carrying strap.',
             'description' => 'Practice with confidence on the Yoga Mat Non-Slip. A textured surface prevents slipping while extra cushioning protects your joints during floor work.',
-            'image' => 'photo-1601925260368-ae2f83cf8b7f',
+            'image' => 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=800&q=80',
             'alt_text' => 'Yoga Mat Non-Slip',
         ],
         [
@@ -236,7 +236,7 @@ class ProductSeeder extends Seeder
             'sold_count' => 470,
             'short_description' => 'Insulated stainless steel bottle keeps drinks cold for 24 hours.',
             'description' => 'Stay hydrated with the Stainless Steel Water Bottle. Double-wall insulation keeps beverages cold for 24 hours or hot for 12, with a leak-proof lid for travel.',
-            'image' => 'photo-1602143407151-7111542de6e8',
+            'image' => 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=800&q=80',
             'alt_text' => 'Stainless Steel Water Bottle',
         ],
     ];

@@ -121,7 +121,7 @@ class OrderService
         );
 
         $deliveryCharge = $this->deliveryChargeForDistrict($shipping['district']);
-        $total = $subtotal + $deliveryCharge;
+        $total = max($subtotal + $deliveryCharge - ($shipping['discount_amount'] ?? 0), 0);
 
         return DB::transaction(function () use ($shipping, $items, $subtotal, $deliveryCharge, $total, $paymentMethod, $statusNote): Order {
             $order = Order::create([
