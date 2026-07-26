@@ -13,10 +13,10 @@ class UserSeeder extends Seeder
      */
     private const USERS = [
         [
-            'name' => 'ShopEase Admin',
-            'email' => 'admin@shopease.test',
+            'name' => 'ShopBD Admin',
+            'email' => 'hassan0cse@gmail.com',
             'role' => 'admin',
-            'phone' => '01700000001',
+            'phone' => '01770910017',
         ],
         [
             'name' => 'Test User',
