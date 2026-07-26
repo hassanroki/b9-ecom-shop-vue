@@ -41,13 +41,13 @@ const totalOrders = computed(() =>
                 <div
                     v-for="point in data"
                     :key="point.date"
-                    class="group flex min-w-0 flex-1 flex-col items-center gap-2"
+                    class="group flex h-full min-w-0 flex-1 flex-col items-center gap-2"
                 >
                     <div
                         class="relative flex w-full flex-1 items-end justify-center"
                     >
                         <div
-                            class="w-full max-w-4 rounded-t-md bg-primary/80 transition-colors group-hover:bg-primary"
+                            class="w-full max-w-4 rounded-t-md bg-red-600 transition-colors group-hover:bg-red-700"
                             :style="{
                                 height: `${Math.max((point.revenue / maxRevenue) * 100, point.revenue > 0 ? 4 : 0)}%`,
                             }"

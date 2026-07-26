@@ -12,12 +12,12 @@ class HeroSlideSeeder extends Seeder
      */
     private const SLIDES = [
         [
-            'image' => 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1920&q=70',
+            'image' => 'https://images.pexels.com/photos/8886939/pexels-photo-8886939.jpeg',
             'link' => '/shop',
             'sort_order' => 1,
         ],
         [
-            'image' => 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1920&q=70',
+            'image' => 'https://img.magnific.com/free-photo/rendering-smart-home-device_23-2151039324.jpg?t=st=1784957786~exp=1784961386~hmac=82e55dc90a660b097733d2cf32f5fb841efc20528eab940dfe580b909bd34acc&w=1480',
             'link' => '/shop?sort=best',
             'sort_order' => 2,
         ],
