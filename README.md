@@ -85,10 +85,16 @@ DB_DATABASE=b9_ecom_shop_vue
 DB_USERNAME=root
 DB_PASSWORD=
 
+# SSLCommerz Settings
+SSLC_SANDBOX=true
+SSLC_STORE_ID=tasku6a5766d3d7f27
+SSLC_STORE_PASSWORD=tasku6a5766d3d7f27@ssl
+SSLC_STORE_CURRENCY=BDT
+
 # Stripe Settings
-STRIPE_KEY=pk_test_...
-STRIPE_SECRET=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_KEY=pk_test_51TuRBuAXk7zfv0BDYkJ5n5y0gZaHwhMRRsDQkRrRsJ8YjIIckuWwgJVjo9wJopklDbtnw05cR4dX3pfeKTmbu9f9001EJro35c
+STRIPE_SECRET=sk_test_51TuRBuAXk7zfv0BDpKt9IyUe9VGWVtCHeaUNENI12oDYghOfzvXUaFOMUApFDEoGsYSDpeQr21P2jOAPl1UPtYWo00kptN4UlK
+STRIPE_WEBHOOK_SECRET=
 STRIPE_CURRENCY=USD
 ```
 
@@ -119,6 +125,9 @@ In a new terminal window, serve the Laravel application:
 php artisan serve --port=8081
 ```
 Open **`http://localhost:8081`** in your browser.
+
+# Cach Clear Command
+php artisan optimize:clear
 
 ---
 
