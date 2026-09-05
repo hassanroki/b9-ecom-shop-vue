@@ -10,26 +10,26 @@ defineProps<{
 <template>
     <div class="space-y-6">
         <div class="border-gray-150 rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 class="border-b border-gray-100 pb-3 text-lg font-bold text-gray-900">
+            <h3 class="border-b border-gray-100 pb-3 text-lg font-bold text-gray-700">
                 My Profile Details
             </h3>
 
             <div class="mt-6 grid grid-cols-1 gap-x-8 gap-y-6 text-sm sm:grid-cols-2">
                 <div>
                     <p class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Full Name</p>
-                    <p class="mt-1.5 mb-1 text-base font-bold text-gray-900">{{ user.name }}</p>
+                    <p class="mt-1.5 mb-1 text-base font-bold text-gray-700">{{ user.name }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Email Address</p>
-                    <p class="mt-1.5 mb-1 text-base font-medium text-gray-900">{{ user.email }}</p>
+                    <p class="mt-1.5 mb-1 text-base font-medium text-gray-700">{{ user.email }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Phone Number</p>
-                    <p class="mt-1.5 mb-1 text-base font-medium text-gray-900">{{ user.phone || 'Not set' }}</p>
+                    <p class="mt-1.5 mb-1 text-base font-medium text-gray-700">{{ user.phone || 'Not set' }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Member Since</p>
-                    <p class="mt-1.5 mb-1 text-base font-medium text-gray-900">{{ formatDate(user.created_at) }}</p>
+                    <p class="mt-1.5 mb-1 text-base font-medium text-gray-700">{{ formatDate(user.created_at) }}</p>
                 </div>
             </div>
 

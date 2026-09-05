@@ -10,7 +10,7 @@ defineProps<{
 <template>
     <div class="space-y-6">
         <div class="border-gray-150 rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 class="border-b border-gray-100 pb-3 text-lg font-bold text-gray-900">
+            <h3 class="border-b border-gray-100 pb-3 text-lg font-bold text-gray-700">
                 My Order History
             </h3>
 

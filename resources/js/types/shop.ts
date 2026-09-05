@@ -48,6 +48,7 @@ export type ShopProductDetail = ShopProduct & {
     id: number;
     slug: string;
     category: string;
+    brand: string | null;
     categoryHref: string;
     summary: string;
     description: string;
@@ -62,11 +63,22 @@ export type ShopCategoryFilter = {
     slug: string;
 };
 
+export type ShopBrandFilter = {
+    name: string;
+    slug: string;
+};
+export type ShopBrand = {
+    name: string;
+    img: string;
+    href: string;
+};
+
 export type ShopFilters = {
     categories: string[];
-    price: string;
+    brands: string[];
+    price: ShopPriceRange;
     inStock: boolean;
-    sort: string;
+    sort: ShopSortOption;
     search: string;
     page: number;
 };

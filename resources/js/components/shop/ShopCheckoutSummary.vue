@@ -61,7 +61,7 @@ function toggleSummary(): void {
             class="flex w-full items-center justify-between gap-2 p-5 text-left lg:cursor-default"
             @click="toggleSummary"
         >
-            <span class="text-lg font-semibold text-gray-900"
+            <span class="text-lg font-semibold text-gray-700"
                 >Order Summary</span
             >
             <span class="flex items-center gap-2">
@@ -117,7 +117,7 @@ function toggleSummary(): void {
                     <div class="min-w-0 flex-1">
                         <div class="flex items-start justify-between gap-2">
                             <p
-                                class="line-clamp-1 text-sm font-medium text-gray-900"
+                                class="line-clamp-1 text-sm font-medium text-gray-700"
                             >
                                 {{ item.name }}
                             </p>
@@ -171,7 +171,7 @@ function toggleSummary(): void {
                                     </svg>
                                 </button>
                                 <span
-                                    class="w-9 text-center text-sm font-medium text-gray-900"
+                                    class="w-9 text-center text-sm font-medium text-gray-700"
                                     >{{ item.qty }}</span
                                 >
                                 <button
@@ -195,7 +195,7 @@ function toggleSummary(): void {
                                     </svg>
                                 </button>
                             </div>
-                            <span class="text-sm font-semibold text-gray-900">{{
+                            <span class="text-sm font-semibold text-gray-700">{{
                                 formatTaka(item.price * item.qty)
                             }}</span>
                         </div>
@@ -206,7 +206,7 @@ function toggleSummary(): void {
             <div class="space-y-2.5 border-t border-gray-100 px-5 py-4 text-sm">
                 <div class="flex justify-between">
                     <span class="text-gray-500">Subtotal</span>
-                    <span class="font-medium text-gray-900">{{
+                    <span class="font-medium text-gray-700">{{
                         formatTaka(subtotal)
                     }}</span>
                 </div>
@@ -217,7 +217,7 @@ function toggleSummary(): void {
                             deliveryNote
                         }}</span>
                     </span>
-                    <span class="font-medium text-gray-900">{{
+                    <span class="font-medium text-gray-700">{{
                         formatTaka(deliveryCharge)
                     }}</span>
                 </div>
@@ -228,7 +228,7 @@ function toggleSummary(): void {
                 <div
                     class="mt-2 flex justify-between border-t border-gray-100 pt-3 text-base"
                 >
-                    <span class="font-semibold text-gray-900">Total</span>
+                    <span class="font-semibold text-gray-700">Total</span>
                     <span class="font-bold text-shop-primary-600">{{
                         formatTaka(grandTotal)
                     }}</span>

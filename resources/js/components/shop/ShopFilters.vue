@@ -6,10 +6,13 @@ import type { ShopPriceRange } from '@/types/shop';
 const {
     categories,
     selectedCategories,
+    brands,
+    selectedBrands,
     priceRange,
     inStockOnly,
     isFilterDrawerOpen,
     toggleCategory,
+    toggleBrand,
     setPriceRange,
     setInStockOnly,
     clearFilters,
@@ -34,7 +37,7 @@ function handleInStockChange(event: Event): void {
             class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85%] translate-x-full overflow-y-auto bg-white p-5 shadow-xl transition-transform duration-300 ease-in-out lg:static lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 lg:overflow-visible lg:bg-transparent lg:p-0 lg:shadow-none"
             :class="isFilterDrawerOpen ? '!translate-x-0' : ''">
             <div class="mb-4 flex items-center justify-between lg:hidden">
-                <span class="text-lg font-bold text-gray-900">Filters</span>
+                <span class="text-lg font-bold text-gray-700">Filters</span>
                 <button type="button" aria-label="Close filters"
                     class="inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                     @click="closeFilterDrawer">
@@ -47,7 +50,7 @@ function handleInStockChange(event: Event): void {
             <div class="space-y-6 lg:sticky lg:top-24">
                 <!-- Category (multi-select checkboxes) -->
                 <div class="rounded-xl border border-gray-200 p-4">
-                    <h3 class="mb-3 text-sm font-semibold text-gray-900">
+                    <h3 class="mb-3 text-sm font-semibold text-gray-700">
                         Category
                     </h3>
                     <div class="space-y-1.5 text-sm">
@@ -61,9 +64,25 @@ function handleInStockChange(event: Event): void {
                     </div>
                 </div>
 
+                <!-- Brand (multi-select checkboxes) -->
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <h3 class="mb-3 text-sm font-semibold text-gray-700">
+                        Brand
+                    </h3>
+                    <div class="space-y-1.5 text-sm">
+                        <label v-for="brand in brands" :key="brand.slug"
+                            class="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 hover:bg-gray-50">
+                            <input type="checkbox" :value="brand.slug" :checked="selectedBrands.includes(brand.slug)"
+                                class="h-4 w-4 rounded text-shop-primary-600 focus:ring-shop-primary-600"
+                                @change="toggleBrand(brand.slug)" />
+                            <span class="text-gray-600">{{ brand.name }}</span>
+                        </label>
+                    </div>
+                </div>
+
                 <!-- Price Range (radio — single select) -->
                 <div class="rounded-xl border border-gray-200 p-4">
-                    <h3 class="mb-3 text-sm font-semibold text-gray-900">
+                    <h3 class="mb-3 text-sm font-semibold text-gray-700">
                         Price Range
                     </h3>
                     <div class="space-y-1.5 text-sm">
@@ -79,7 +98,7 @@ function handleInStockChange(event: Event): void {
 
                 <!-- Availability -->
                 <div class="rounded-xl border border-gray-200 p-4">
-                    <h3 class="mb-3 text-sm font-semibold text-gray-900">
+                    <h3 class="mb-3 text-sm font-semibold text-gray-700">
                         Availability
                     </h3>
                     <label

@@ -54,14 +54,14 @@ function submitReview(event: Event): void {
                     <button id="tab-desc" role="tab" :aria-selected="activeTab === 'description'"
                         aria-controls="panel-desc" class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'description'
                                 ? 'border-shop-primary-600 text-shop-primary-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-900'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
                             " @click="activateTab('description')">
                         Description
                     </button>
                     <button id="tab-rev" role="tab" :aria-selected="activeTab === 'reviews'" aria-controls="panel-rev"
                         class="-mb-px border-b-2 px-1 pb-3 text-sm font-semibold" :class="activeTab === 'reviews'
                                 ? 'border-shop-primary-600 text-shop-primary-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-900'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
                             " @click="activateTab('reviews')">
                         Reviews
                         <span class="text-gray-400">({{ product.reviews }})</span>
@@ -72,7 +72,7 @@ function submitReview(event: Event): void {
             <div v-show="activeTab === 'description'" id="panel-desc" role="tabpanel" aria-labelledby="tab-desc"
                 class="pt-6">
                 <RichTextContent :html="product.description" class="max-w-prose text-gray-600 md:text-base" />
-                <h3 v-if="product.features.length > 0" class="pt-2 text-base font-semibold text-gray-900">
+                <h3 v-if="product.features.length > 0" class="pt-2 text-base font-semibold text-gray-700">
                     Key Features
                 </h3>
                 <ul v-if="product.features.length > 0"
@@ -88,7 +88,7 @@ function submitReview(event: Event): void {
                 <div id="reviews" class="grid grid-cols-1 gap-8 lg:grid-cols-3">
                     <div class="lg:col-span-1">
                         <div class="rounded-xl border border-gray-200 bg-white p-6 text-center">
-                            <p class="text-5xl font-bold text-gray-900">
+                            <p class="text-5xl font-bold text-gray-700">
                                 {{ product.rating }}
                             </p>
                             <div class="mt-2 flex justify-center">
@@ -123,7 +123,7 @@ function submitReview(event: Event): void {
                                             class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-shop-primary-50 text-sm font-semibold text-shop-primary-600">{{
                                             review.name.charAt(0) }}</span>
                                         <div>
-                                            <p class="text-sm font-semibold text-gray-900">
+                                            <p class="text-sm font-semibold text-gray-700">
                                                 {{ review.name }}
                                                 <span v-if="review.verified"
                                                     class="ml-1 align-middle rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">Verified</span>
@@ -144,7 +144,7 @@ function submitReview(event: Event): void {
                         </div>
 
                         <div class="mt-10 rounded-xl border border-gray-200 bg-white p-6">
-                            <h3 class="text-lg font-semibold text-gray-900">
+                            <h3 class="text-lg font-semibold text-gray-700">
                                 Write a review
                             </h3>
                             <p class="mt-1 text-sm text-gray-500">

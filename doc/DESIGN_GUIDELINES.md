@@ -40,7 +40,7 @@ A clean, modern palette: a confident primary, a warm accent for CTAs/sales, and 
 ### 2.2 Neutrals
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `gray-900` | `#111827` | Headings, primary text |
+| `gray-700` | `#111827` | Headings, primary text |
 | `gray-600` | `#4B5563` | Body / secondary text |
 | `gray-400` | `#9CA3AF` | Muted text, placeholders |
 | `gray-200` | `#E5E7EB` | Borders, dividers |
@@ -94,7 +94,7 @@ theme: {
 ### 3.3 Rules
 - Line height: `leading-relaxed` for body, `leading-tight` for headings.
 - Limit body line length to ~`max-w-prose` for readability.
-- Headings in `gray-900`, body in `gray-600`.
+- Headings in `gray-700`, body in `gray-600`.
 
 ---
 
@@ -145,8 +145,8 @@ Use Tailwind's 4px-based scale consistently. Prefer `4, 6, 8, 12, 16, 24` increm
 | Variant | Style |
 |---------|-------|
 | **Primary** | `bg-primary-600 text-white hover:bg-primary-700 rounded-lg px-5 py-2.5 font-medium transition` |
-| **Secondary** | `bg-gray-100 text-gray-900 hover:bg-gray-200 rounded-lg px-5 py-2.5` |
-| **Outline** | `border border-gray-300 text-gray-900 hover:bg-gray-50 rounded-lg px-5 py-2.5` |
+| **Secondary** | `bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg px-5 py-2.5` |
+| **Outline** | `border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg px-5 py-2.5` |
 | **Disabled** | `opacity-50 cursor-not-allowed` (used for Stock Out "Add to Cart") |
 
 - Minimum tap target: **44×44px** for mobile.
@@ -182,7 +182,7 @@ The most-used component — keep it tight and consistent.
 - **Mobile:** hamburger menu → slide-in drawer; cart and search always visible.
 
 ### 6.6 Footer
-- Background `bg-gray-900 text-gray-300`.
+- Background `bg-gray-700 text-gray-300`.
 - Columns: About, Quick Links, Customer Service, Contact/Social.
 - Stack into single column on mobile (`grid grid-cols-1 md:grid-cols-4 gap-8`).
 - Bottom bar: copyright + payment/COD note.

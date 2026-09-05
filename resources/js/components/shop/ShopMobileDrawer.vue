@@ -180,7 +180,7 @@ function handleItemClick(): void {
                                     searchQuery || (isShopPage ? search : '')
                                 "
                                 placeholder="Search products..."
-                                class="w-full rounded-lg border border-gray-300 bg-white/80 py-2.5 pr-4 pl-10 text-sm text-gray-900 placeholder-gray-400 transition-all focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
+                                class="w-full rounded-lg border border-gray-300 bg-white/80 py-2.5 pr-4 pl-10 text-sm text-gray-700 placeholder-gray-400 transition-all focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
                                 autocomplete="off"
                                 @input="handleSearchInput"
                                 @focus="showDropdown = true"
@@ -253,7 +253,7 @@ function handleItemClick(): void {
                                     />
                                     <div class="flex-1 overflow-hidden">
                                         <div
-                                            class="truncate font-medium text-gray-900"
+                                            class="truncate font-medium text-gray-700"
                                         >
                                             {{ prod.name }}
                                         </div>
@@ -282,7 +282,7 @@ function handleItemClick(): void {
                         class="rounded-lg px-4 py-3 text-sm font-semibold transition-all"
                         :class="
                             isShopPage
-                                ? 'bg-[#87E64B] text-gray-900 shadow-sm'
+                                ? 'bg-[#87E64B] text-gray-700 shadow-sm'
                                 : 'text-[#737373] hover:bg-black/5 hover:text-[#B9B9B9]'
                         "
                         @click="closeMobileMenu"

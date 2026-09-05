@@ -58,7 +58,7 @@ defineProps<{
                         autofocus
                         :tabindex="1"
                         autocomplete="email"
-                        class="h-12 w-full rounded-2xl border-none bg-[#F7DDCB] px-4 text-sm text-stone-900 transition-shadow outline-none focus:ring-2 focus:ring-stone-900/20"
+                        class="h-12 w-full rounded-2xl border-none bg-[#F7DDCB] px-4 text-sm text-stone-700 transition-shadow outline-none focus:ring-2 focus:ring-stone-700/20"
                     />
                     <InputError :message="errors.email" />
                 </div>
@@ -77,7 +77,7 @@ defineProps<{
                         required
                         :tabindex="2"
                         autocomplete="current-password"
-                        class="h-12 w-full rounded-2xl border-none bg-[#F7DDCB] px-4 text-sm text-stone-900 transition-shadow outline-none focus:ring-2 focus:ring-stone-900/20"
+                        class="h-12 w-full rounded-2xl border-none bg-[#F7DDCB] px-4 text-sm text-stone-700 transition-shadow outline-none focus:ring-2 focus:ring-stone-700/20"
                     />
                     <InputError :message="errors.password" />
                 </div>
@@ -87,7 +87,7 @@ defineProps<{
                     :tabindex="3"
                     :disabled="processing"
                     data-test="login-button"
-                    class="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    class="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-stone-700 text-sm font-medium text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                     <svg
                         v-if="processing"
@@ -129,7 +129,7 @@ defineProps<{
                 <TextLink
                     :href="register()"
                     :tabindex="5"
-                    class="font-medium text-stone-800 hover:text-stone-900"
+                    class="font-medium text-stone-800 hover:text-stone-700"
                 >
                     Sign up
                 </TextLink>

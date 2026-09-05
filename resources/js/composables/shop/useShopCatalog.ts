@@ -3,6 +3,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import { shopPriceRanges } from '@/data/shop/catalog';
 import { QueryParams } from '@/wayfinder';
 import type {
+    ShopBrandFilter,
     ShopCatalogProduct,
     ShopCategoryFilter,
     ShopFilters,
@@ -20,6 +21,7 @@ let searchInitialized = false;
 
 const DEFAULT_FILTERS: ShopFilters = {
     categories: [],
+    brands: [],
     price: 'all',
     inStock: false,
     sort: 'newest',
@@ -32,6 +34,10 @@ function buildQueryParams(filters: ShopFilters): QueryParams {
 
     if (filters.categories.length > 0) {
         params.categories = filters.categories;
+    }
+
+    if (filters.brands.length > 0) {
+        params.brands = filters.brands;
     }
 
     if (filters.price !== 'all') {
@@ -77,6 +83,10 @@ export function useShopCatalog() {
                 | undefined) ?? [],
     );
 
+    const brands = computed(
+        () => (inertiaPage.props.brands as ShopBrandFilter[] | undefined) ?? [],
+    );
+
     const meta = computed(
         (): ShopPaginationMeta =>
             (inertiaPage.props.meta as ShopPaginationMeta | undefined) ?? {
@@ -103,6 +113,7 @@ export function useShopCatalog() {
     // ── Derived state ───────────────────────────────────────────────────────
 
     const selectedCategories = computed(() => serverFilters.value.categories);
+    const selectedBrands = computed(() => serverFilters.value.brands);
     const priceRange = computed(
         () => serverFilters.value.price as ShopPriceRange,
     );
@@ -114,6 +125,7 @@ export function useShopCatalog() {
     const hasActiveFilters = computed(
         () =>
             serverFilters.value.categories.length > 0 ||
+            serverFilters.value.brands.length > 0 ||
             serverFilters.value.price !== 'all' ||
             serverFilters.value.inStock ||
             serverFilters.value.search.trim() !== '',
@@ -142,6 +154,19 @@ export function useShopCatalog() {
         }
 
         applyFilters({ categories: current, page: 1 });
+    }
+
+    function toggleBrand(slug: string): void {
+        const current = [...serverFilters.value.brands];
+        const idx = current.indexOf(slug);
+
+        if (idx === -1) {
+            current.push(slug);
+        } else {
+            current.splice(idx, 1);
+        }
+
+        applyFilters({ brands: current, page: 1 });
     }
 
     function setPriceRange(value: ShopPriceRange): void {
@@ -201,6 +226,18 @@ export function useShopCatalog() {
             });
         });
 
+        sf.brands.forEach((slug) => {
+            const brand = brands.value.find((b) => b.slug === slug);
+            chips.push({
+                label: brand?.name ?? slug,
+                clear: () =>
+                    applyFilters({
+                        brands: sf.brands.filter((s) => s !== slug),
+                        page: 1,
+                    }),
+            });
+        });
+
         if (sf.price !== 'all') {
             const label =
                 shopPriceRanges.find((r) => r.value === sf.price)?.label ??
@@ -239,10 +276,12 @@ export function useShopCatalog() {
         // Server data
         products,
         categories,
+        brands,
         meta,
         total,
         // Filter state (from server)
         selectedCategories,
+        selectedBrands,
         priceRange,
         inStockOnly,
         sort,
@@ -257,6 +296,7 @@ export function useShopCatalog() {
         activeFilters,
         // Actions
         toggleCategory,
+        toggleBrand,
         setPriceRange,
         setInStockOnly,
         setSort,

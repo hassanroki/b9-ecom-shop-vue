@@ -38,7 +38,7 @@ const productHref = productShowUrl(item);
             <div class="min-w-0">
                 <Link
                     :href="productHref"
-                    class="line-clamp-2 text-sm font-medium text-gray-900 hover:text-shop-primary-600"
+                    class="line-clamp-2 text-sm font-medium text-gray-700 hover:text-shop-primary-600"
                 >
                     {{ item.name }}
                 </Link>
@@ -94,7 +94,7 @@ const productHref = productShowUrl(item);
                     </svg>
                 </button>
                 <span
-                    class="w-10 text-center text-sm font-medium text-gray-900"
+                    class="w-10 text-center text-sm font-medium text-gray-700"
                     >{{ item.qty }}</span
                 >
                 <button
@@ -120,7 +120,7 @@ const productHref = productShowUrl(item);
             </div>
         </div>
         <div
-            class="text-sm font-semibold text-gray-900 sm:col-span-2 sm:text-right"
+            class="text-sm font-semibold text-gray-700 sm:col-span-2 sm:text-right"
         >
             <span class="text-gray-400 sm:hidden">Total: </span
             >{{ formatTaka(item.price * item.qty) }}

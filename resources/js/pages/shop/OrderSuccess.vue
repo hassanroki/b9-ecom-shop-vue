@@ -61,7 +61,7 @@ const { order } = defineProps<{
                         />
                     </svg>
                 </div>
-                <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">
+                <h1 class="text-2xl font-bold text-gray-700 md:text-3xl">
                     No order found
                 </h1>
                 <p class="mt-2 text-sm text-gray-600 md:text-base">

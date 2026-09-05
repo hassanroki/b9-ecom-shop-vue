@@ -13,7 +13,7 @@ defineProps<{
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div class="mb-8 flex items-end justify-between">
                 <div>
-                    <h2 class="text-2xl font-bold text-gray-900 md:text-3xl">
+                    <h2 class="text-2xl font-bold text-gray-700 md:text-3xl">
                         Shop by category
                     </h2>
                     <p class="mt-2 text-sm text-gray-600 md:text-base">
@@ -82,7 +82,7 @@ defineProps<{
                         </div>
                     </div>
                     <span
-                        class="block px-2 py-3 text-center text-sm font-medium text-gray-900 transition group-hover:text-shop-primary-600"
+                        class="block px-2 py-3 text-center text-sm font-medium text-gray-700 transition group-hover:text-shop-primary-600"
                         >{{ category.name }}</span
                     >
                 </a>

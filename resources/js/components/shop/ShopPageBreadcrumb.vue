@@ -28,7 +28,7 @@ const { items } = defineProps<{
                     "
                     :class="
                         index === items.length - 1
-                            ? 'font-medium text-gray-900'
+                            ? 'font-medium text-gray-700'
                             : ''
                     "
                 >

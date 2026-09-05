@@ -31,7 +31,7 @@ const { orderNumber, total, paymentLabel } = defineProps<{
                 />
             </svg>
         </div>
-        <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">
+        <h1 class="text-2xl font-bold text-gray-700 md:text-3xl">
             Thank you for your order!
         </h1>
         <p class="mt-2 text-sm text-gray-600 md:text-base">
@@ -44,17 +44,17 @@ const { orderNumber, total, paymentLabel } = defineProps<{
         >
             <div>
                 <p class="text-gray-400">Order number</p>
-                <p class="mt-0.5 font-semibold text-gray-900">
+                <p class="mt-0.5 font-semibold text-gray-700">
                     {{ orderNumber }}
                 </p>
             </div>
             <div>
                 <p class="text-gray-400">Total</p>
-                <p class="mt-0.5 font-semibold text-gray-900">{{ total }}</p>
+                <p class="mt-0.5 font-semibold text-gray-700">{{ total }}</p>
             </div>
             <div>
                 <p class="text-gray-400">Payment</p>
-                <p class="mt-0.5 font-semibold text-gray-900">
+                <p class="mt-0.5 font-semibold text-gray-700">
                     {{ paymentLabel }}
                 </p>
             </div>

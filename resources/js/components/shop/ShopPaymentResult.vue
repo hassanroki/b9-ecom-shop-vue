@@ -64,7 +64,7 @@ const content = computed(() => {
             </svg>
         </div>
 
-        <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">
+        <h1 class="text-2xl font-bold text-gray-700 md:text-3xl">
             {{ content.title }}
         </h1>
         <p class="mt-2 text-sm text-gray-600 md:text-base">
@@ -77,19 +77,19 @@ const content = computed(() => {
         >
             <div>
                 <p class="text-gray-400">Order number</p>
-                <p class="mt-0.5 font-semibold text-gray-900">
+                <p class="mt-0.5 font-semibold text-gray-700">
                     {{ order.orderNumber }}
                 </p>
             </div>
             <div>
                 <p class="text-gray-400">Total</p>
-                <p class="mt-0.5 font-semibold text-gray-900">
+                <p class="mt-0.5 font-semibold text-gray-700">
                     {{ formatTaka(order.total) }}
                 </p>
             </div>
             <div>
                 <p class="text-gray-400">Payment</p>
-                <p class="mt-0.5 font-semibold text-gray-900">
+                <p class="mt-0.5 font-semibold text-gray-700">
                     {{ order.paymentLabel }}
                 </p>
             </div>

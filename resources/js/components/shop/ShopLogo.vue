@@ -16,7 +16,7 @@ const { variant = 'light' } = defineProps<{
     >
         <!-- আইকন বক্স: নতুন থিমের সাথে ম্যাচ করে bg-[#87E64B] এবং টেক্সট কালার ডার্ক গ্রে করা হয়েছে -->
         <span
-            class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#87E64B] text-gray-900 shadow-sm transition-transform duration-200 group-hover:scale-105"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#87E64B] text-gray-700 shadow-sm transition-transform duration-200 group-hover:scale-105"
         >
             <AppLogoIcon />
         </span>

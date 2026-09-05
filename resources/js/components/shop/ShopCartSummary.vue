@@ -13,13 +13,13 @@ const { itemCount, subtotal } = defineProps<{
     <div
         class="rounded-xl border border-gray-200 bg-white p-5 lg:sticky lg:top-24"
     >
-        <h2 class="text-lg font-semibold text-gray-900">Order Summary</h2>
+        <h2 class="text-lg font-semibold text-gray-700">Order Summary</h2>
         <div class="mt-4 space-y-2.5 text-sm">
             <div class="flex justify-between">
                 <span class="text-gray-500"
                     >Subtotal ({{ itemCount }} items)</span
                 >
-                <span class="font-medium text-gray-900">{{
+                <span class="font-medium text-gray-700">{{
                     formatTaka(subtotal)
                 }}</span>
             </div>
@@ -30,7 +30,7 @@ const { itemCount, subtotal } = defineProps<{
             <div
                 class="mt-2 flex justify-between border-t border-gray-100 pt-3 text-base"
             >
-                <span class="font-semibold text-gray-900">Estimated total</span>
+                <span class="font-semibold text-gray-700">Estimated total</span>
                 <span class="font-bold text-shop-primary-600">{{
                     formatTaka(subtotal)
                 }}</span>

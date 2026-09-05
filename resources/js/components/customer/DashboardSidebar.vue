@@ -37,7 +37,7 @@ const tabs = [
                     {{ user.name.charAt(0).toUpperCase() }}
                 </div>
                 <div class="overflow-hidden">
-                    <h4 class="truncate font-semibold text-gray-900">
+                    <h4 class="truncate font-semibold text-gray-700">
                         {{ user.name }}
                     </h4>
                     <p class="truncate text-xs text-gray-400 capitalize">
@@ -55,7 +55,7 @@ const tabs = [
                 :class="
                     activeTab === tab.key
                         ? 'bg-shop-primary-50 text-shop-primary-600'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-700'
                 "
             >
                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

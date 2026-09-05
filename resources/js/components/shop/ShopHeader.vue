@@ -147,7 +147,7 @@ function closeDropdown(): void {
                     <Link
                         :href="home()"
                         class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] hover:text-[#B9B9B9]"
-                        :class="isHomePage ? 'text-gray-900' : ''"
+                        :class="isHomePage ? 'text-gray-700' : ''"
                     >
                         Home
                         <span
@@ -161,7 +161,7 @@ function closeDropdown(): void {
                     <Link
                         :href="shop.index()"
                         class="group relative flex h-full items-center px-4 text-sm font-medium text-[#737373] hover:text-[#B9B9B9]"
-                        :class="isShopPage ? 'text-gray-900' : ''"
+                        :class="isShopPage ? 'text-gray-700' : ''"
                     >
                         Shop
                         <span
@@ -221,7 +221,7 @@ function closeDropdown(): void {
                                     searchQuery || (isShopPage ? search : '')
                                 "
                                 placeholder="Search for products…"
-                                class="w-full rounded-lg border border-gray-300 bg-white/50 py-2.5 pr-4 pl-10 text-sm text-gray-900 transition placeholder:text-gray-400 focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
+                                class="w-full rounded-lg border border-gray-300 bg-white/50 py-2.5 pr-4 pl-10 text-sm text-gray-700 transition placeholder:text-gray-400 focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
                                 autocomplete="off"
                                 @input="handleSearchInput"
                                 @focus="showDropdown = true"
@@ -295,7 +295,7 @@ function closeDropdown(): void {
                                     />
                                     <div class="flex-1 overflow-hidden">
                                         <div
-                                            class="truncate text-sm font-medium text-gray-900"
+                                            class="truncate text-sm font-medium text-gray-700"
                                         >
                                             {{ prod.name }}
                                         </div>
@@ -439,7 +439,7 @@ function closeDropdown(): void {
                             type="search"
                             :value="searchQuery || (isShopPage ? search : '')"
                             placeholder="Search for products…"
-                            class="w-full rounded-lg border border-gray-300 bg-white/80 py-2.5 pr-4 pl-10 text-sm text-gray-900 focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
+                            class="w-full rounded-lg border border-gray-300 bg-white/80 py-2.5 pr-4 pl-10 text-sm text-gray-700 focus:border-[#87E64B] focus:bg-white focus:ring-2 focus:ring-[#87E64B] focus:outline-none"
                             autocomplete="off"
                             @input="handleSearchInput"
                             @focus="showDropdown = true"
@@ -513,7 +513,7 @@ function closeDropdown(): void {
                                 />
                                 <div class="flex-1 overflow-hidden">
                                     <div
-                                        class="truncate text-sm font-medium text-gray-900"
+                                        class="truncate text-sm font-medium text-gray-700"
                                     >
                                         {{ prod.name }}
                                     </div>

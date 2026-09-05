@@ -233,7 +233,7 @@ function handleSubmit(): void {
                     <section
                         class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
                     >
-                        <h2 class="text-lg font-semibold text-gray-900">
+                        <h2 class="text-lg font-semibold text-gray-700">
                             Shipping Details
                         </h2>
                         <p class="mt-1 text-sm text-gray-500">
@@ -256,7 +256,7 @@ function handleSubmit(): void {
                                     type="text"
                                     required
                                     autocomplete="name"
-                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                     :class="
                                         form.errors.customer_name
                                             ? 'border-red-500 focus:ring-red-500'
@@ -287,7 +287,7 @@ function handleSubmit(): void {
                                     required
                                     autocomplete="tel"
                                     inputmode="numeric"
-                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                     :class="
                                         form.errors.phone
                                             ? 'border-red-500 focus:ring-red-500'
@@ -317,7 +317,7 @@ function handleSubmit(): void {
                                     type="email"
                                     required
                                     autocomplete="email"
-                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                     :class="
                                         form.errors.email
                                             ? 'border-red-500 focus:ring-red-500'
@@ -345,7 +345,7 @@ function handleSubmit(): void {
                                     v-model="form.district"
                                     name="district"
                                     required
-                                    class="w-full rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    class="w-full rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                     :class="
                                         form.errors.district
                                             ? 'border-red-500 focus:ring-red-500'
@@ -382,7 +382,7 @@ function handleSubmit(): void {
                                     name="area"
                                     type="text"
                                     required
-                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                     :class="
                                         form.errors.area
                                             ? 'border-red-500 focus:ring-red-500'
@@ -411,7 +411,7 @@ function handleSubmit(): void {
                                     name="address"
                                     rows="2"
                                     required
-                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    class="w-full rounded-lg border px-4 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                     :class="
                                         form.errors.address
                                             ? 'border-red-500 focus:ring-red-500'
@@ -441,7 +441,7 @@ function handleSubmit(): void {
                                     v-model="form.notes"
                                     name="notes"
                                     rows="2"
-                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                    class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-700 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                     placeholder="Delivery instructions, preferred time, etc."
                                 />
                             </div>
@@ -451,7 +451,7 @@ function handleSubmit(): void {
                     <section
                         class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
                     >
-                        <h2 class="text-lg font-semibold text-gray-900">
+                        <h2 class="text-lg font-semibold text-gray-700">
                             Coupon Code
                         </h2>
                         <p class="mt-1 text-sm text-gray-500">
@@ -465,7 +465,7 @@ function handleSubmit(): void {
                             <input
                                 v-model="couponInput"
                                 type="text"
-                                class="w-full flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 uppercase focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                                class="w-full flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-700 uppercase focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                                 placeholder="e.g. SUMMER20"
                                 :disabled="couponApplying"
                                 @keydown.enter.prevent="applyCoupon"
@@ -512,7 +512,7 @@ function handleSubmit(): void {
                     <section
                         class="rounded-xl border border-gray-200 bg-white p-5 md:p-6"
                     >
-                        <h2 class="text-lg font-semibold text-gray-900">
+                        <h2 class="text-lg font-semibold text-gray-700">
                             Payment Method
                         </h2>
                         <p class="mt-1 text-sm text-gray-500">
@@ -550,7 +550,7 @@ function handleSubmit(): void {
                                 </svg>
                                 <div>
                                     <p
-                                        class="text-sm font-semibold text-gray-900"
+                                        class="text-sm font-semibold text-gray-700"
                                     >
                                         Cash on Delivery
                                     </p>
@@ -591,7 +591,7 @@ function handleSubmit(): void {
                                 </svg>
                                 <div>
                                     <p
-                                        class="text-sm font-semibold text-gray-900"
+                                        class="text-sm font-semibold text-gray-700"
                                     >
                                         Pay Online (SSLCommerz)
                                     </p>
@@ -628,7 +628,7 @@ function handleSubmit(): void {
                                     <path d="M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6Zm2 0v2h16V6H4Zm0 4v2h4v-2H4Zm0 4v2h4v-2H4Zm6-4v2h2v-2h-2Zm4 0v2h2v-2h-2Zm-4 4v2h2v-2h-2Zm4 0v2h4v-2h-4Z" />
                                 </svg>
                                 <div>
-                                    <p class="text-sm font-semibold text-gray-900">
+                                    <p class="text-sm font-semibold text-gray-700">
                                         Pay with Stripe
                                     </p>
                                     <p class="mt-1 text-sm text-gray-500">

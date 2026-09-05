@@ -34,13 +34,47 @@ export type CategoryFormData = {
     is_active: boolean;
 };
 
+export interface AdminBrand {
+    id: number;
+    name: string;
+    slug: string;
+    image: string | null;
+    image_source: 'url' | 'upload';
+    image_url: string;
+    description: string | null;
+    sort_order: number;
+    is_active: boolean;
+    products_count: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface BrandFormData {
+    name: string;
+    slug: string;
+    image_source: 'url' | 'upload';
+    image: string;
+    image_file: File | null;
+    description: string;
+    sort_order: number;
+    is_active: boolean;
+    [key: string]: any;
+}
+
 export type StockStatus = 'in_stock' | 'stock_out';
+
+export type AdminBrandOption = {
+    id: number;
+    name: string;
+    is_deleted: boolean;
+};
 
 export type AdminProductListItem = {
     id: number;
     name: string;
     slug: string;
     category: AdminCategoryOption;
+    brand: AdminBrandOption | null;
     price: number;
     compare_at_price: number | null;
     stock_status: StockStatus;
@@ -75,6 +109,7 @@ export type ProductImageFormItem = {
 
 export type AdminProduct = AdminProductListItem & {
     category_id: number;
+    brand_id: number | null;
     short_description: string | null;
     description: string | null;
     images: AdminProductImagePayload[];
@@ -84,6 +119,7 @@ export type AdminProduct = AdminProductListItem & {
 
 export type ProductFormData = {
     category_id: number | '';
+    brand_id: number | null
     name: string;
     slug: string;
     short_description: string;

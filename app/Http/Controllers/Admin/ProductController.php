@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreProductRequest;
 use App\Http\Requests\Admin\UpdateProductRequest;
+use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductImage;
@@ -27,7 +28,11 @@ class ProductController extends Controller
     public function index(): Response
     {
         $products = Product::query()
-            ->with(['category:id,name', 'images' => fn($query) => $query->where('is_primary', true)])
+            ->with([
+                'category:id,name',
+                'brand:id,name',
+                'images' => fn($query) => $query->where('is_primary', true),
+            ])
             ->orderByDesc('created_at')
             ->get()
             ->map(fn(Product $product): array => $this->listPayload($product));
@@ -44,6 +49,7 @@ class ProductController extends Controller
     {
         return Inertia::render('admin/products/Create', [
             'categories' => $this->categoryOptions(),
+            'brands' => $this->brandOptions(),
         ]);
     }
 
@@ -73,7 +79,11 @@ class ProductController extends Controller
      */
     public function show(Product $product): Response
     {
-        $product->load(['category:id,name', 'images' => fn($query) => $query->orderBy('sort_order')]);
+        $product->load([
+            'category:id,name',
+            'brand:id,name',
+            'images' => fn($query) => $query->orderBy('sort_order'),
+        ]);
 
         return Inertia::render('admin/products/Show', [
             'product' => $this->detailPayload($product),
@@ -85,11 +95,16 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-        $product->load(['category:id,name', 'images' => fn($query) => $query->orderBy('sort_order')]);
+        $product->load([
+            'category:id,name',
+            'brand:id,name',
+            'images' => fn($query) => $query->orderBy('sort_order'),
+        ]);
 
         return Inertia::render('admin/products/Edit', [
             'product' => $this->detailPayload($product),
             'categories' => $this->categoryOptions(),
+            'brands' => $this->brandOptions(),
         ]);
     }
 
@@ -146,6 +161,22 @@ class ProductController extends Controller
     }
 
     /**
+     * @return list<array{id: int, name: string}>
+     */
+    private function brandOptions(): array
+    {
+        return Brand::query()
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn(Brand $brand): array => [
+                'id' => $brand->id,
+                'name' => $brand->name,
+            ])
+            ->all();
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     private function imagesFromRequest(StoreProductRequest|UpdateProductRequest $request): array
@@ -183,10 +214,20 @@ class ProductController extends Controller
             'id' => $product->id,
             'name' => $product->name,
             'slug' => $product->slug,
-            'category' => [
+            'category' => $product->category ? [
                 'id' => $product->category->id,
                 'name' => $product->category->name,
+                'is_deleted' => $product->category->trashed(),
+            ] : [
+                'id' => null,
+                'name' => 'Unknown',
+                'is_deleted' => true,
             ],
+            'brand' => $product->brand ? [
+                'id' => $product->brand->id,
+                'name' => $product->brand->name,
+                'is_deleted' => $product->brand->trashed(),
+            ] : null,
             'price' => (float) $product->price,
             'compare_at_price' => $product->compare_at_price !== null
                 ? (float) $product->compare_at_price
@@ -211,6 +252,7 @@ class ProductController extends Controller
         return [
             'id' => $product->id,
             'category_id' => $product->category_id,
+            'brand_id' => $product->brand_id,
             'name' => $product->name,
             'slug' => $product->slug,
             'short_description' => $product->short_description,
@@ -224,10 +266,14 @@ class ProductController extends Controller
             'is_featured' => $product->is_featured,
             'is_active' => $product->is_active,
             'sold_count' => $product->sold_count,
-            'category' => [
+            'category' => $product->category ? [
                 'id' => $product->category->id,
                 'name' => $product->category->name,
-            ],
+            ] : null,
+            'brand' => $product->brand ? [
+                'id' => $product->brand->id,
+                'name' => $product->brand->name,
+            ] : null,
             'image' => $this->productImageService->resolveUrl($primaryImage?->image_path),
             'images' => $product->images
                 ->map(fn(ProductImage $image): array => $this->productImageService->formPayload($image))

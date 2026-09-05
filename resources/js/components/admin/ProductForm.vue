@@ -5,11 +5,12 @@ import ProductImagesField from '@/components/admin/ProductImagesField.vue';
 import RichTextEditor from '@/components/admin/RichTextEditor.vue';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { AdminCategoryOption, ProductFormData } from '@/types/admin';
+import type { AdminBrandOption, AdminCategoryOption, ProductFormData } from '@/types/admin';
 
 type Props = {
     form: InertiaForm<ProductFormData>;
     categories: AdminCategoryOption[];
+    brands: AdminBrandOption[];
 };
 
 defineProps<Props>();
@@ -28,15 +29,28 @@ const selectClass =
                 Basic information
             </h3>
 
-            <div class="grid gap-2">
-                <Label for="category_id">Category</Label>
-                <select id="category_id" v-model="form.category_id" :class="selectClass" required>
-                    <option disabled value="">Select a category</option>
-                    <option v-for="category in categories" :key="category.id" :value="category.id">
-                        {{ category.name }}
-                    </option>
-                </select>
-                <InputError :message="form.errors.category_id" />
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div class="grid gap-2">
+                    <Label for="category_id">Category</Label>
+                    <select id="category_id" v-model="form.category_id" :class="selectClass" required>
+                        <option disabled value="">Select a category</option>
+                        <option v-for="category in categories" :key="category.id" :value="category.id">
+                            {{ category.name }}
+                        </option>
+                    </select>
+                    <InputError :message="form.errors.category_id" />
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="brand_id">Brand</Label>
+                    <select id="brand_id" v-model="form.brand_id" :class="selectClass">
+                        <option :value="null">No brand</option>
+                        <option v-for="brand in brands" :key="brand.id" :value="brand.id">
+                            {{ brand.name }}
+                        </option>
+                    </select>
+                    <InputError :message="form.errors.brand_id" />
+                </div>
             </div>
 
             <div class="grid gap-2">

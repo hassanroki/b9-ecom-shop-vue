@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Storefront;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Database\Eloquent\Collection;
+use App\Models\Brand;
 use App\Models\Category;
 use App\Models\HeroSlide;
 use App\Models\Product;
@@ -26,6 +27,7 @@ class HomeController extends Controller
         return Inertia::render('shop/Home', [
             'heroSlides' => $this->heroSlides(),
             'categories' => $this->categories(),
+            'brands' => $this->brands(),
             'bestSellingProducts' => $this->products(
                 fn($query) => $query->where('is_best_seller', true)->orderByDesc('sold_count'),
                 'Best Seller',
@@ -56,8 +58,6 @@ class HomeController extends Controller
     /**
      * @return list<array{name: string, img: string, href: string}>
      */
-
-
     private function categories(): array
     {
         return Category::query()
@@ -71,7 +71,28 @@ class HomeController extends Controller
                         ? $category->image
                         : Storage::url($category->image))
                     : null,
-                'href' => route('shop.index', ['category' => $category->name]),
+                'href' => route('shop.index', ['categories' => [$category->slug]]),
+            ])
+            ->all();
+    }
+
+    /**
+     * @return list<array{name: string, img: string, href: string}>
+     */
+    private function brands(): array
+    {
+        return Brand::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['name', 'slug', 'image'])
+            ->map(fn(Brand $brand): array => [
+                'name' => $brand->name,
+                'img' => $brand->image
+                    ? (str_starts_with($brand->image, 'http')
+                        ? $brand->image
+                        : Storage::url($brand->image))
+                    : null,
+                'href' => route('shop.index', ['brands' => [$brand->slug]]),
             ])
             ->all();
     }

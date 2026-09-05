@@ -60,15 +60,18 @@ function goToReviews(): void {
     <div>
         <a :href="product.categoryHref" class="text-sm font-medium text-shop-primary-600 hover:text-shop-primary-700">{{
             product.category }}</a>
-        <h1 class="mt-2 text-2xl font-bold text-gray-900 md:text-3xl">
+        <p v-if="product.brand" class="mt-1 text-sm text-gray-500">
+            Brand: <span class="font-medium text-gray-700">{{ product.brand }}</span>
+        </p>
+        <h1 class="mt-2 text-2xl font-bold text-gray-700 md:text-3xl">
             {{ product.name }}
         </h1>
 
         <div class="mt-3 flex flex-wrap items-center gap-3">
             <ShopStarRating :rating="product.rating" />
-            <span class="text-sm font-medium text-gray-900">{{
+            <span class="text-sm font-medium text-gray-700">{{
                 product.rating
-                }}</span>
+            }}</span>
             <button type="button" class="text-sm text-gray-500 hover:text-shop-primary-600" @click="goToReviews">
                 {{ product.reviews }} reviews
             </button>
@@ -80,9 +83,9 @@ function goToReviews(): void {
         <div class="mt-5 flex flex-wrap items-end gap-3">
             <span class="text-3xl font-bold text-shop-primary-600">{{
                 formatTaka(product.price)
-                }}</span>
+            }}</span>
             <span v-if="product.oldPrice" class="text-lg text-gray-400 line-through">{{ formatTaka(product.oldPrice)
-                }}</span>
+            }}</span>
             <span v-if="product.oldPrice"
                 class="rounded-full bg-shop-accent-500 px-2.5 py-1 text-xs font-semibold text-white">
                 Save {{ savingsPercent(product.price, product.oldPrice) }}%
@@ -107,7 +110,7 @@ function goToReviews(): void {
                         </svg>
                     </button>
                     <input :value="quantity" type="text" inputmode="numeric" aria-label="Quantity"
-                        class="h-11 w-12 border-x border-gray-300 text-center text-sm font-medium text-gray-900 focus:outline-none"
+                        class="h-11 w-12 border-x border-gray-300 text-center text-sm font-medium text-gray-700 focus:outline-none"
                         @input="handleQuantityInput" @blur="clampQuantity" />
                     <button type="button" aria-label="Increase quantity"
                         class="inline-flex h-11 w-11 items-center justify-center rounded-r-lg text-gray-600 hover:bg-gray-100 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
@@ -156,7 +159,7 @@ function goToReviews(): void {
                         d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H3m10 11h2.5a1 1 0 001-.7l1.4-4.2a1 1 0 00-.95-1.3H13" />
                 </svg>
                 <p class="text-sm text-gray-600">
-                    <span class="font-medium text-gray-900">Delivery:</span>
+                    <span class="font-medium text-gray-700">Delivery:</span>
                     ৳ 60 inside Dhaka, ৳ 120 outside Dhaka. Delivered in 2–4
                     days.
                 </p>
@@ -168,7 +171,7 @@ function goToReviews(): void {
                         d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 12v-2" />
                 </svg>
                 <p class="text-sm text-gray-600">
-                    <span class="font-medium text-gray-900">Cash on Delivery</span>
+                    <span class="font-medium text-gray-700">Cash on Delivery</span>
                     available — pay when you receive.
                 </p>
             </div>
@@ -180,7 +183,7 @@ function goToReviews(): void {
                 </svg>
                 <p class="text-sm text-gray-600">
                     Secure online payment via
-                    <span class="font-medium text-gray-900">SSLCommerz</span>.
+                    <span class="font-medium text-gray-700">SSLCommerz</span>.
                 </p>
             </div>
         </div>

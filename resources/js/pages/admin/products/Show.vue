@@ -92,9 +92,18 @@ setLayoutProps({
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="grid gap-4">
-                    <div class="grid gap-1">
-                        <p class="text-sm text-muted-foreground">Category</p>
-                        <p class="font-medium">{{ product.category.name }}</p>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">Category</p>
+                            <p class="font-medium">{{ product.category.name }}</p>
+                        </div>
+
+                        <div class="grid gap-1">
+                            <p class="text-sm text-muted-foreground">Brand</p>
+                            <p class="font-medium">
+                                {{ product.brand?.name ?? '—' }}
+                            </p>
+                        </div>
                     </div>
 
                     <div class="grid gap-1">
@@ -148,8 +157,8 @@ setLayoutProps({
 
                     <div class="flex flex-wrap gap-2">
                         <Badge :variant="product.stock_status === 'in_stock'
-                                ? 'default'
-                                : 'secondary'
+                            ? 'default'
+                            : 'secondary'
                             ">
                             {{
                                 product.stock_status === 'in_stock'

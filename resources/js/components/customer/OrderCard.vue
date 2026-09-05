@@ -43,7 +43,7 @@ function resolveImg(path: string | null | undefined): string | null {
                         Order Number
                     </p>
                     <p
-                        class="mt-0.5 text-sm font-bold text-gray-900 sm:text-xs"
+                        class="mt-0.5 text-sm font-bold text-gray-700 sm:text-xs"
                     >
                         #{{ order.order_number }}
                     </p>
@@ -54,7 +54,7 @@ function resolveImg(path: string | null | undefined): string | null {
                     >
                         Date Placed
                     </p>
-                    <p class="mt-0.5 font-medium text-gray-900">
+                    <p class="mt-0.5 font-medium text-gray-700">
                         {{ formatDate(order.placed_at) }}
                     </p>
                 </div>
@@ -74,7 +74,7 @@ function resolveImg(path: string | null | undefined): string | null {
                     >
                         Payment Method
                     </p>
-                    <p class="mt-0.5 font-medium text-gray-900 capitalize">
+                    <p class="mt-0.5 font-medium text-gray-700 capitalize">
                         {{
                             order.payment_method === 'cod'
                                 ? 'Cash On Delivery'
@@ -106,7 +106,7 @@ function resolveImg(path: string | null | undefined): string | null {
                 <button
                     type="button"
                     @click="toggleExpand"
-                    class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-200 p-1.5 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900"
+                    class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-200 p-1.5 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700"
                 >
                     <svg
                         class="h-4 w-4 transition-transform duration-200"
@@ -165,7 +165,7 @@ function resolveImg(path: string | null | undefined): string | null {
                             </svg>
                         </div>
                         <div>
-                            <p class="text-sm font-semibold text-gray-900">
+                            <p class="text-sm font-semibold text-gray-700">
                                 <Link
                                     v-if="item.product"
                                     :href="productShowUrl(item.product)"
@@ -181,7 +181,7 @@ function resolveImg(path: string | null | undefined): string | null {
                             </p>
                         </div>
                     </div>
-                    <span class="text-sm font-bold text-gray-900">{{
+                    <span class="text-sm font-bold text-gray-700">{{
                         formatTaka(item.line_total)
                     }}</span>
                 </div>
@@ -192,7 +192,7 @@ function resolveImg(path: string | null | undefined): string | null {
                 class="mt-4 grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 text-xs text-gray-600 sm:grid-cols-2"
             >
                 <div>
-                    <p class="mb-1 font-semibold text-gray-900">
+                    <p class="mb-1 font-semibold text-gray-700">
                         Shipping Address
                     </p>
                     <p class="font-medium">{{ order.customer_name }}</p>
@@ -207,13 +207,13 @@ function resolveImg(path: string | null | undefined): string | null {
                 >
                     <div class="flex w-full max-w-50 justify-between">
                         <span>Subtotal:</span>
-                        <span class="font-bold text-gray-900">{{
+                        <span class="font-bold text-gray-700">{{
                             formatTaka(order.subtotal)
                         }}</span>
                     </div>
                     <div class="flex w-full max-w-50 justify-between">
                         <span>Delivery Charge:</span>
-                        <span class="font-bold text-gray-900">{{
+                        <span class="font-bold text-gray-700">{{
                             formatTaka(order.delivery_charge)
                         }}</span>
                     </div>
@@ -229,7 +229,7 @@ function resolveImg(path: string | null | undefined): string | null {
                     <div
                         class="flex w-full max-w-50 justify-between border-t border-gray-100 pt-1.5 text-sm font-bold"
                     >
-                        <span class="text-gray-900">Total:</span>
+                        <span class="text-gray-700">Total:</span>
                         <span class="text-shop-primary-600">{{
                             formatTaka(order.total)
                         }}</span>

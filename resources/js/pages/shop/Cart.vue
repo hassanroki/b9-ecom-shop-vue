@@ -49,15 +49,14 @@ function handleClearCart(): void {
     <Head title="Shopping Cart">
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-            rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </Head>
 
     <div class="bg-gray-50 py-6 md:py-10">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <ShopPageBreadcrumb :items="[{ label: 'Cart' }]" />
 
-            <h1 class="mb-6 text-2xl font-bold text-gray-900 md:text-3xl">
+            <h1 class="mb-6 text-2xl font-bold text-gray-700 md:text-3xl">
                 Shopping Cart
             </h1>
 
@@ -104,7 +103,7 @@ function handleClearCart(): void {
                             d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                 </div>
-                <h2 class="text-lg font-semibold text-gray-900">
+                <h2 class="text-lg font-semibold text-gray-700">
                     Your cart is empty
                 </h2>
                 <p class="mt-1 text-sm text-gray-500">

@@ -22,7 +22,10 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
-// 1. এখানে create সহ ইমপোর্ট করুন
+import {
+    index as brandsIndex,
+    create as brandsCreate,
+} from '@/routes/admin/brands';
 import {
     index as categoriesIndex,
     create as categoriesCreate,
@@ -44,8 +47,16 @@ const mainNavItems = ref([
         isOpen: false,
         children: [
             { title: 'All Categories', href: categoriesIndex() },
-            // 2. এখানে categoriesCreate() অথবা আপনার ইমপোর্ট করা create() বসিয়ে দিন
             { title: 'Add Category', href: categoriesCreate() },
+        ],
+    },
+    {
+        title: 'Brands',
+        icon: Tags,
+        isOpen: false,
+        children: [
+            { title: 'All Brands', href: brandsIndex() },
+            { title: 'Add Brand', href: brandsCreate() },
         ],
     },
     {
@@ -95,31 +106,21 @@ const toggleSubmenu = (item: any) => {
             <div v-for="item in mainNavItems" :key="item.title" class="mb-1">
                 <!-- If item has children (Submenu) -->
                 <template v-if="item.children">
-                    <button
-                        @click="toggleSubmenu(item)"
-                        class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    >
+                    <button @click="toggleSubmenu(item)"
+                        class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
                         <div class="flex items-center gap-x-3">
                             <component :is="item.icon" class="h-4 w-4" />
                             <span>{{ item.title }}</span>
                         </div>
-                        <ChevronRight
-                            class="h-4 w-4 transition-transform duration-200"
-                            :class="{ 'rotate-90': item.isOpen }"
-                        />
+                        <ChevronRight class="h-4 w-4 transition-transform duration-200"
+                            :class="{ 'rotate-90': item.isOpen }" />
                     </button>
 
                     <!-- Submenu items -->
-                    <div
-                        v-show="item.isOpen"
-                        class="mt-1 ml-6 flex flex-col space-y-1 border-l border-sidebar-border pl-2"
-                    >
-                        <Link
-                            v-for="subItem in item.children"
-                            :key="subItem.title"
-                            :href="subItem.href"
-                            class="rounded-md px-3 py-1.5 text-sm text-neutral-600 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-                        >
+                    <div v-show="item.isOpen"
+                        class="mt-1 ml-6 flex flex-col space-y-1 border-l border-sidebar-border pl-2">
+                        <Link v-for="subItem in item.children" :key="subItem.title" :href="subItem.href"
+                            class="rounded-md px-3 py-1.5 text-sm text-neutral-600 transition-colors hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100">
                             {{ subItem.title }}
                         </Link>
                     </div>
@@ -127,10 +128,8 @@ const toggleSubmenu = (item: any) => {
 
                 <!-- Normal Item without Children -->
                 <template v-else>
-                    <Link
-                        :href="item.href!"
-                        class="flex items-center gap-x-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    >
+                    <Link :href="item.href!"
+                        class="flex items-center gap-x-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
                         <component :is="item.icon" class="h-4 w-4" />
                         <span>{{ item.title }}</span>
                     </Link>

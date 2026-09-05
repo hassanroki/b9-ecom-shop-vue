@@ -23,17 +23,14 @@ const { products, total, hasActiveFilters, clearFilters } = useShopCatalog();
             href="https://fonts.gstatic.com"
             crossorigin="anonymous"
         />
-        <link
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-            rel="stylesheet"
-        />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </Head>
 
     <div class="border-b border-gray-200 bg-gray-50">
         <div
             class="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-6 lg:px-8"
         >
-            <h1 class="text-lg font-bold text-gray-900 md:text-xl">
+            <h1 class="text-lg font-bold text-gray-700 md:text-xl">
                 Shop All Products
             </h1>
             <nav aria-label="Breadcrumb">
@@ -56,7 +53,7 @@ const { products, total, hasActiveFilters, clearFilters } = useShopCatalog();
 
     <div
         v-if="total === 0 && !hasActiveFilters"
-        class="border-b border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900"
+        class="border-b border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-700"
     >
         Storefront data is not loaded yet. Run
         <code class="rounded bg-white px-2 py-1 font-mono text-xs"
@@ -102,7 +99,7 @@ const { products, total, hasActiveFilters, clearFilters } = useShopCatalog();
                             />
                         </svg>
                     </div>
-                    <h3 class="text-lg font-semibold text-gray-900">
+                    <h3 class="text-lg font-semibold text-gray-700">
                         No products found
                     </h3>
                     <p class="mt-1 text-sm text-gray-500">

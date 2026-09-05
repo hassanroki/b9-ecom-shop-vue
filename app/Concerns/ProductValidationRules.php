@@ -13,6 +13,7 @@ trait ProductValidationRules
     {
         return [
             'category_id' => ['required', 'integer', 'exists:categories,id'],
+            'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
             'name' => ['required', 'string', 'max:200'],
             'slug' => [
                 'required',

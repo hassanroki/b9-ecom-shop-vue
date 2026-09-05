@@ -24,7 +24,7 @@ const {
             :class="isCartOpen ? 'translate-x-0' : 'translate-x-full'" role="dialog" aria-modal="true"
             aria-label="Shopping cart">
             <div class="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-5">
-                <h2 class="text-lg font-semibold text-gray-900">
+                <h2 class="text-lg font-semibold text-gray-700">
                     Your Cart ({{ cartQty }})
                 </h2>
                 <button type="button" aria-label="Close cart"
@@ -43,7 +43,7 @@ const {
                             d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                 </div>
-                <p class="font-medium text-gray-900">Your cart is empty</p>
+                <p class="font-medium text-gray-700">Your cart is empty</p>
                 <p class="mt-1 text-sm text-gray-500">
                     Add items to get started.
                 </p>
@@ -63,7 +63,7 @@ const {
                         </div>
                         <div class="min-w-0 flex-1">
                             <div class="flex items-start justify-between gap-2">
-                                <p class="line-clamp-2 text-sm font-medium text-gray-900">
+                                <p class="line-clamp-2 text-sm font-medium text-gray-700">
                                     {{ item.name }}
                                 </p>
                                 <button type="button" aria-label="Remove"
@@ -86,7 +86,7 @@ const {
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
                                         </svg>
                                     </button>
-                                    <span class="w-9 text-center text-sm font-medium text-gray-900">{{ item.qty
+                                    <span class="w-9 text-center text-sm font-medium text-gray-700">{{ item.qty
                                         }}</span>
                                     <button type="button" aria-label="Increase"
                                         class="inline-flex h-8 w-8 items-center justify-center rounded-r-lg text-gray-600 hover:bg-gray-100"
@@ -97,7 +97,7 @@ const {
                                         </svg>
                                     </button>
                                 </div>
-                                <span class="text-sm font-semibold text-gray-900">
+                                <span class="text-sm font-semibold text-gray-700">
                                     {{ formatTaka(item.price * item.qty) }}
                                 </span>
                             </div>
@@ -108,7 +108,7 @@ const {
                 <div class="shrink-0 border-t border-gray-200 p-5">
                     <div class="mb-1 flex items-center justify-between">
                         <span class="text-sm text-gray-500">Subtotal</span>
-                        <span class="text-lg font-bold text-gray-900">{{
+                        <span class="text-lg font-bold text-gray-700">{{
                             formatTaka(cartSubtotal)
                             }}</span>
                     </div>

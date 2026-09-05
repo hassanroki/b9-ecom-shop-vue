@@ -31,7 +31,7 @@
                     </span>
                     <div class="space-y-0.5">
                         <h3
-                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-700 sm:line-clamp-none sm:text-sm"
                         >
                             Nationwide Delivery
                         </h3>
@@ -66,7 +66,7 @@
                     </span>
                     <div class="space-y-0.5">
                         <h3
-                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-700 sm:line-clamp-none sm:text-sm"
                         >
                             Cash on Delivery
                         </h3>
@@ -101,7 +101,7 @@
                     </span>
                     <div class="space-y-0.5">
                         <h3
-                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-700 sm:line-clamp-none sm:text-sm"
                         >
                             Secure Payment
                         </h3>
@@ -136,7 +136,7 @@
                     </span>
                     <div class="space-y-0.5">
                         <h3
-                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-900 sm:line-clamp-none sm:text-sm"
+                            class="line-clamp-1 text-xs font-bold tracking-tight text-gray-700 sm:line-clamp-none sm:text-sm"
                         >
                             Genuine Products
                         </h3>

@@ -75,7 +75,7 @@ const year = computed(() => new Date().getFullYear());
                 <!-- কুইক লিংকস -->
                 <div>
                     <h3
-                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
+                        class="text-xs font-bold tracking-widest text-gray-700 uppercase"
                     >
                         Quick Links
                     </h3>
@@ -114,7 +114,7 @@ const year = computed(() => new Date().getFullYear());
                 <!-- কাস্টমার সার্ভিস -->
                 <div>
                     <h3
-                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
+                        class="text-xs font-bold tracking-widest text-gray-700 uppercase"
                     >
                         Customer Service
                     </h3>
@@ -153,7 +153,7 @@ const year = computed(() => new Date().getFullYear());
                 <!-- কন্টাক্ট ইনফো -->
                 <div>
                     <h3
-                        class="text-xs font-bold tracking-widest text-gray-900 uppercase"
+                        class="text-xs font-bold tracking-widest text-gray-700 uppercase"
                     >
                         Contact Us
                     </h3>

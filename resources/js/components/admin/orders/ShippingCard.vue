@@ -47,7 +47,7 @@ defineProps<{
                     Customer Note
                 </p>
 
-                <p class="text-sm text-amber-900">
+                <p class="text-sm text-amber-700">
                     {{ order.notes }}
                 </p>
             </div>

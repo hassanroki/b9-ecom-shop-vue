@@ -10,7 +10,7 @@ const { products } = defineProps<{
 <template>
     <section class="bg-white py-12 md:py-16">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h2 class="mb-8 text-2xl font-bold text-gray-900 md:text-3xl">
+            <h2 class="mb-8 text-2xl font-bold text-gray-700 md:text-3xl">
                 You may also like
             </h2>
             <div

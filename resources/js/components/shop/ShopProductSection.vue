@@ -35,7 +35,7 @@ const {
             >
                 <div class="max-w-xl space-y-1.5">
                     <h2
-                        class="text-xl font-black tracking-tight text-neutral-900 uppercase md:text-2xl"
+                        class="text-xl font-black tracking-tight text-neutral-700 uppercase md:text-2xl"
                     >
                         {{ title }}
                     </h2>
@@ -49,13 +49,13 @@ const {
                 <!-- আপগ্রেড করা প্রিমিয়াম "View all" অ্যাকশন বাটন -->
                 <a
                     href="#"
-                    class="group inline-flex items-center gap-1.5 border-b-2 border-transparent pb-1 text-xs font-bold tracking-widest text-neutral-900 uppercase transition-all duration-200 hover:border-[#87E64B]"
+                    class="group inline-flex items-center gap-1.5 border-b-2 border-transparent pb-1 text-xs font-bold tracking-widest text-neutral-700 uppercase transition-all duration-200 hover:border-[#87E64B]"
                 >
                     <span class="transition-colors group-hover:text-neutral-700"
                         >View all</span
                     >
                     <svg
-                        class="h-3.5 w-3.5 text-neutral-900 transition-all duration-200 group-hover:translate-x-1 group-hover:text-[#87E64B]"
+                        class="h-3.5 w-3.5 text-neutral-700 transition-all duration-200 group-hover:translate-x-1 group-hover:text-[#87E64B]"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"

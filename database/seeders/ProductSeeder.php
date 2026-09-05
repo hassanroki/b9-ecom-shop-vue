@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductImage;
@@ -16,6 +17,7 @@ class ProductSeeder extends Seeder
      *     slug: string,
      *     name: string,
      *     category_slug: string,
+     *     brand_slug: string|null,
      *     price: float,
      *     compare_at_price: float|null,
      *     stock_status: 'in_stock'|'stock_out',
@@ -33,6 +35,7 @@ class ProductSeeder extends Seeder
             'slug' => 'manha-abaya-gown-gt1332',
             'name' => 'MANHA ABAYA GOWN | GT-1332',
             'category_slug' => 'dress',
+            'brand_slug' => null,
             'price' => 6499.00,
             'compare_at_price' => 8999.00,
             'stock_status' => 'in_stock',
@@ -48,6 +51,7 @@ class ProductSeeder extends Seeder
             'slug' => 'smart-fitness-watch-series-6',
             'name' => 'Smart Fitness Watch Series 6',
             'category_slug' => 'electronics',
+            'brand_slug' => 'samsung',
             'price' => 4299.00,
             'compare_at_price' => null,
             'stock_status' => 'in_stock',
@@ -63,6 +67,7 @@ class ProductSeeder extends Seeder
             'slug' => 'classic-leather-sneakers',
             'name' => 'Classic Leather Sneakers',
             'category_slug' => 'fashion',
+            'brand_slug' => 'nike',
             'price' => 2999.00,
             'compare_at_price' => 3999.00,
             'stock_status' => 'in_stock',
@@ -78,6 +83,7 @@ class ProductSeeder extends Seeder
             'slug' => 'premium-sunglasses-uv400',
             'name' => 'Premium Sunglasses UV400',
             'category_slug' => 'fashion',
+            'brand_slug' => null,
             'price' => 1599.00,
             'compare_at_price' => null,
             'stock_status' => 'stock_out',
@@ -93,6 +99,7 @@ class ProductSeeder extends Seeder
             'slug' => 'minimalist-backpack-20l',
             'name' => 'Minimalist Backpack 20L',
             'category_slug' => 'fashion',
+            'brand_slug' => null,
             'price' => 2499.00,
             'compare_at_price' => null,
             'stock_status' => 'in_stock',
@@ -108,6 +115,7 @@ class ProductSeeder extends Seeder
             'slug' => 'ceramic-pour-over-coffee-set',
             'name' => 'Ceramic Pour-Over Coffee Set',
             'category_slug' => 'home-living',
+            'brand_slug' => null,
             'price' => 1899.00,
             'compare_at_price' => null,
             'stock_status' => 'in_stock',
@@ -123,6 +131,7 @@ class ProductSeeder extends Seeder
             'slug' => 'mechanical-keyboard-rgb',
             'name' => 'Mechanical Keyboard RGB',
             'category_slug' => 'electronics',
+            'brand_slug' => null,
             'price' => 5499.00,
             'compare_at_price' => 6299.00,
             'stock_status' => 'in_stock',
@@ -138,6 +147,7 @@ class ProductSeeder extends Seeder
             'slug' => 'cotton-oversized-t-shirt',
             'name' => 'Cotton Oversized T-Shirt',
             'category_slug' => 'fashion',
+            'brand_slug' => null,
             'price' => 899.00,
             'compare_at_price' => null,
             'stock_status' => 'stock_out',
@@ -153,6 +163,7 @@ class ProductSeeder extends Seeder
             'slug' => 'portable-bluetooth-speaker',
             'name' => 'Portable Bluetooth Speaker',
             'category_slug' => 'electronics',
+            'brand_slug' => 'sony',
             'price' => 2199.00,
             'compare_at_price' => 2799.00,
             'stock_status' => 'in_stock',
@@ -168,6 +179,7 @@ class ProductSeeder extends Seeder
             'slug' => 'wireless-earbuds-pro',
             'name' => 'Wireless Earbuds Pro',
             'category_slug' => 'electronics',
+            'brand_slug' => 'sony',
             'price' => 3499.00,
             'compare_at_price' => null,
             'stock_status' => 'in_stock',
@@ -183,6 +195,7 @@ class ProductSeeder extends Seeder
             'slug' => 'scented-soy-candle-set',
             'name' => 'Scented Soy Candle Set',
             'category_slug' => 'home-living',
+            'brand_slug' => null,
             'price' => 749.00,
             'compare_at_price' => null,
             'stock_status' => 'in_stock',
@@ -198,6 +211,7 @@ class ProductSeeder extends Seeder
             'slug' => 'matte-lipstick-collection',
             'name' => 'Matte Lipstick Collection',
             'category_slug' => 'beauty',
+            'brand_slug' => null,
             'price' => 1299.00,
             'compare_at_price' => 1699.00,
             'stock_status' => 'in_stock',
@@ -213,6 +227,7 @@ class ProductSeeder extends Seeder
             'slug' => 'yoga-mat-non-slip',
             'name' => 'Yoga Mat Non-Slip',
             'category_slug' => 'sports',
+            'brand_slug' => null,
             'price' => 1450.00,
             'compare_at_price' => null,
             'stock_status' => 'in_stock',
@@ -228,6 +243,7 @@ class ProductSeeder extends Seeder
             'slug' => 'stainless-steel-water-bottle',
             'name' => 'Stainless Steel Water Bottle',
             'category_slug' => 'sports',
+            'brand_slug' => null,
             'price' => 999.00,
             'compare_at_price' => null,
             'stock_status' => 'stock_out',
@@ -249,6 +265,9 @@ class ProductSeeder extends Seeder
         $categories = Category::query()
             ->pluck('id', 'slug');
 
+        $brands = Brand::query()
+            ->pluck('id', 'slug');
+
         foreach (self::PRODUCTS as $data) {
             $categoryId = $categories[$data['category_slug']] ?? null;
 
@@ -256,10 +275,15 @@ class ProductSeeder extends Seeder
                 continue;
             }
 
+            $brandId = $data['brand_slug'] !== null
+                ? ($brands[$data['brand_slug']] ?? null)
+                : null;
+
             $product = Product::query()->updateOrCreate(
                 ['slug' => $data['slug']],
                 [
                     'category_id' => $categoryId,
+                    'brand_id' => $brandId,
                     'name' => $data['name'],
                     'short_description' => $data['short_description'],
                     'description' => $data['description'],

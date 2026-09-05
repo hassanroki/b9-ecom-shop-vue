@@ -19,7 +19,7 @@ function handleSubmit(event: Event): void {
                 <!-- টেক্সট কন্টেন্ট এরিয়া -->
                 <div class="max-w-lg space-y-1.5">
                     <h2
-                        class="text-xl font-black tracking-tight text-neutral-900 uppercase md:text-2xl"
+                        class="text-xl font-black tracking-tight text-neutral-700 uppercase md:text-2xl"
                     >
                         Get
                         <span

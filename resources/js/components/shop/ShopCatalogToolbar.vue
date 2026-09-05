@@ -12,7 +12,7 @@ function handleSortChange(event: Event): void {
 <template>
     <div class="mb-5 flex items-center justify-between gap-3">
         <p class="text-sm text-gray-600">
-            <span class="font-semibold text-gray-900">{{ total }}</span>
+            <span class="font-semibold text-gray-700">{{ total }}</span>
             products
         </p>
         <div class="flex items-center gap-2">
@@ -28,7 +28,7 @@ function handleSortChange(event: Event): void {
             <div class="flex items-center gap-2">
                 <label for="sortSelect" class="hidden text-sm text-gray-500 sm:block">Sort:</label>
                 <select id="sortSelect" :value="sort"
-                    class="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
+                    class="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600 focus:outline-none"
                     @change="handleSortChange">
                     <option value="newest">Newest</option>
                     <option value="best">Best Selling</option>

@@ -42,7 +42,7 @@ function submit(): void {
                     class="border-gray-150 mt-6 rounded-2xl border bg-white p-6 shadow-sm"
                 >
                     <h3
-                        class="border-b border-gray-100 pb-3 text-lg font-bold text-gray-900"
+                        class="border-b border-gray-100 pb-3 text-lg font-bold text-gray-700"
                     >
                         Edit Account Details
                     </h3>

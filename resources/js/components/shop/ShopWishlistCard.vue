@@ -31,7 +31,7 @@ const imgUrl = computed(() => item.img || FALLBACK_IMG);
             <div v-if="!item.inStock"
                 class="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/30">
                 <span
-                    class="rounded-md bg-gray-900/85 px-4 py-1.5 text-xs font-semibold tracking-wide text-white uppercase shadow-md">Stock
+                    class="rounded-md bg-gray-700/85 px-4 py-1.5 text-xs font-semibold tracking-wide text-white uppercase shadow-md">Stock
                     Out</span>
             </div>
             <div class="absolute top-2 left-2">
@@ -51,7 +51,7 @@ const imgUrl = computed(() => item.img || FALLBACK_IMG);
         <div class="flex flex-1 flex-col p-3 md:p-4">
             <Link :href="productShowUrl(item)" class="block">
                 <h3
-                    class="line-clamp-2 text-sm font-medium text-gray-900 transition-colors duration-200 group-hover:text-shop-primary-600 md:text-base">
+                    class="line-clamp-2 text-sm font-medium text-gray-700 transition-colors duration-200 group-hover:text-shop-primary-600 md:text-base">
                     {{ item.name }}
                 </h3>
             </Link>

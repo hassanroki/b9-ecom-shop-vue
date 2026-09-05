@@ -34,18 +34,14 @@ defineOptions({
 </script>
 
 <template>
+
     <Head title="Products" />
 
     <div class="flex h-full flex-1 flex-col gap-5 p-4 md:p-6">
-        <div
-            class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-        >
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <Heading title="Products" description="Manage your store catalog" />
 
-            <Button
-                as-child
-                class="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
+            <Button as-child class="bg-primary text-primary-foreground hover:bg-primary/90">
                 <Link :href="create()">
                     <Plus class="size-4" />
                     Add product
@@ -54,18 +50,12 @@ defineOptions({
         </div>
 
         <!-- Empty state -->
-        <div
-            v-if="products.length === 0"
-            class="rounded-xl border border-border bg-card py-16 text-center shadow-sm"
-        >
+        <div v-if="products.length === 0" class="rounded-xl border border-border bg-card py-16 text-center shadow-sm">
             <p class="text-sm font-medium text-foreground">No products yet</p>
             <p class="mt-1 text-sm text-muted-foreground">
                 Create your first product to get started.
             </p>
-            <Button
-                as-child
-                class="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
-            >
+            <Button as-child class="mt-4 bg-primary text-primary-foreground hover:bg-primary/90">
                 <Link :href="create()">
                     <Plus class="size-4" />
                     Add product
@@ -76,25 +66,14 @@ defineOptions({
         <template v-else>
             <!-- Mobile: card list -->
             <div class="flex flex-col gap-3 md:hidden">
-                <div
-                    v-for="product in products"
-                    :key="product.id"
-                    class="rounded-xl border border-border bg-card p-4 shadow-sm"
-                >
+                <div v-for="product in products" :key="product.id"
+                    class="rounded-xl border border-border bg-card p-4 shadow-sm">
                     <div class="flex items-start gap-3">
-                        <div
-                            class="size-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted"
-                        >
-                            <img
-                                v-if="product.image"
-                                :src="product.image"
-                                :alt="product.name"
-                                class="size-full object-cover"
-                            />
-                            <div
-                                v-else
-                                class="flex size-full items-center justify-center text-xs text-muted-foreground"
-                            >
+                        <div class="size-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+                            <img v-if="product.image" :src="product.image" :alt="product.name"
+                                class="size-full object-cover" />
+                            <div v-else
+                                class="flex size-full items-center justify-center text-xs text-muted-foreground">
                                 —
                             </div>
                         </div>
@@ -108,14 +87,10 @@ defineOptions({
                             </p>
 
                             <div class="mt-1.5 flex items-center gap-2">
-                                <span
-                                    class="text-sm font-semibold text-foreground"
-                                    >{{ formatTaka(product.price) }}</span
-                                >
-                                <span
-                                    v-if="product.compare_at_price"
-                                    class="text-xs text-muted-foreground line-through"
-                                >
+                                <span class="text-sm font-semibold text-foreground">{{ formatTaka(product.price)
+                                    }}</span>
+                                <span v-if="product.compare_at_price"
+                                    class="text-xs text-muted-foreground line-through">
                                     {{ formatTaka(product.compare_at_price) }}
                                 </span>
                             </div>
@@ -123,90 +98,60 @@ defineOptions({
                             <div class="mt-2 flex flex-wrap gap-1.5">
                                 <span
                                     class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                                    :class="
-                                        product.is_active
+                                    :class="product.is_active
                                             ? 'bg-[#00BC7D]/10 text-[#00754F]'
                                             : 'bg-muted text-muted-foreground'
-                                    "
-                                >
-                                    <span
-                                        class="size-1.5 rounded-full"
-                                        :class="
-                                            product.is_active
-                                                ? 'bg-[#00BC7D]'
-                                                : 'bg-muted-foreground/50'
-                                        "
-                                    />
+                                        ">
+                                    <span class="size-1.5 rounded-full" :class="product.is_active
+                                            ? 'bg-[#00BC7D]'
+                                            : 'bg-muted-foreground/50'
+                                        " />
                                     {{
                                         product.is_active
                                             ? 'Active'
                                             : 'Inactive'
                                     }}
                                 </span>
-                                <span
-                                    class="rounded-full px-2 py-0.5 text-xs font-medium"
-                                    :class="
-                                        product.stock_status === 'in_stock'
-                                            ? 'bg-[#00BC7D]/10 text-[#00754F]'
-                                            : 'bg-destructive/10 text-destructive'
-                                    "
-                                >
+                                <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="product.stock_status === 'in_stock'
+                                        ? 'bg-[#00BC7D]/10 text-[#00754F]'
+                                        : 'bg-destructive/10 text-destructive'
+                                    ">
                                     {{
                                         product.stock_status === 'in_stock'
                                             ? 'In stock'
                                             : 'Out of stock'
                                     }}
                                 </span>
-                                <span
-                                    v-if="product.is_featured"
-                                    class="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                                >
+                                <span v-if="product.is_featured"
+                                    class="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
                                     Featured
                                 </span>
-                                <span
-                                    v-if="product.is_best_seller"
-                                    class="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                                >
+                                <span v-if="product.is_best_seller"
+                                    class="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
                                     Best seller
                                 </span>
                             </div>
 
-                            <div
-                                class="mt-2 flex gap-4 text-xs text-muted-foreground"
-                            >
-                                <span
-                                    >{{ product.category.name
-                                    }}<template
-                                        v-if="product.category.is_deleted"
-                                    >
-                                        (deleted)</template
-                                    ></span
-                                >
+                            <div class="mt-2 flex gap-4 text-xs text-muted-foreground">
+                                <span>{{ product.category.name
+                                }}<template v-if="product.category.is_deleted">
+                                        (deleted)</template></span>
+                                <span v-if="product.brand">{{ product.brand.name
+                                }}<template v-if="product.brand.is_deleted">
+                                        (deleted)</template></span>
                                 <span>Sold: {{ product.sold_count }}</span>
                             </div>
                         </div>
                     </div>
 
-                    <div
-                        class="mt-3 flex items-center gap-2 border-t border-border pt-3"
-                    >
-                        <Button
-                            as-child
-                            variant="outline"
-                            size="sm"
-                            class="flex-1"
-                        >
+                    <div class="mt-3 flex items-center gap-2 border-t border-border pt-3">
+                        <Button as-child variant="outline" size="sm" class="flex-1">
                             <Link :href="show(product.id)">
                                 <Eye class="size-4" />
                                 View
                             </Link>
                         </Button>
-                        <Button
-                            as-child
-                            variant="outline"
-                            size="sm"
-                            class="flex-1"
-                        >
+                        <Button as-child variant="outline" size="sm" class="flex-1">
                             <Link :href="edit(product.id)">
                                 <Pencil class="size-4" />
                                 Edit
@@ -214,29 +159,19 @@ defineOptions({
                         </Button>
                         <Dialog>
                             <DialogTrigger as-child>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
+                                <Button variant="ghost" size="icon"
                                     class="size-9 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                    :aria-label="`Delete ${product.name}`"
-                                >
+                                    :aria-label="`Delete ${product.name}`">
                                     <Trash2 class="size-4" />
                                 </Button>
                             </DialogTrigger>
                             <DialogContent>
-                                <Form
-                                    v-bind="
-                                        ProductController.destroy.form(
-                                            product.id,
-                                        )
-                                    "
-                                    :options="{ preserveScroll: true }"
-                                    v-slot="{ processing }"
-                                >
+                                <Form v-bind="ProductController.destroy.form(
+                                    product.id,
+                                )
+                                    " :options="{ preserveScroll: true }" v-slot="{ processing }">
                                     <DialogHeader class="space-y-3">
-                                        <DialogTitle
-                                            >Delete product?</DialogTitle
-                                        >
+                                        <DialogTitle>Delete product?</DialogTitle>
                                         <DialogDescription>
                                             This will remove
                                             <strong>{{ product.name }}</strong>
@@ -246,17 +181,9 @@ defineOptions({
 
                                     <DialogFooter class="gap-2">
                                         <DialogClose as-child>
-                                            <Button
-                                                type="button"
-                                                variant="secondary"
-                                                >Cancel</Button
-                                            >
+                                            <Button type="button" variant="secondary">Cancel</Button>
                                         </DialogClose>
-                                        <Button
-                                            type="submit"
-                                            variant="destructive"
-                                            :disabled="processing"
-                                        >
+                                        <Button type="submit" variant="destructive" :disabled="processing">
                                             Delete
                                         </Button>
                                     </DialogFooter>
@@ -268,77 +195,58 @@ defineOptions({
             </div>
 
             <!-- Desktop: table -->
-            <div
-                class="hidden overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block"
-            >
+            <div class="hidden overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block">
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-260 text-sm">
-                        <thead
-                            class="border-b border-border bg-muted/50 text-left"
-                        >
+                        <thead class="border-b border-border bg-muted/50 text-left">
                             <tr>
                                 <th
-                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Image
                                 </th>
                                 <th
-                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Name
                                 </th>
                                 <th
-                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Category
                                 </th>
                                 <th
-                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                    Brand
+                                </th>
+                                <th
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Price
                                 </th>
                                 <th
-                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Stock
                                 </th>
                                 <th
-                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Sold
                                 </th>
                                 <th
-                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Status
                                 </th>
                                 <th
-                                    class="px-5 py-3.5 text-right text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                                >
+                                    class="px-5 py-3.5 text-right text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     Actions
                                 </th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr
-                                v-for="product in products"
-                                :key="product.id"
-                                class="border-b border-border transition-colors last:border-b-0 hover:bg-muted/30"
-                            >
+                            <tr v-for="product in products" :key="product.id"
+                                class="border-b border-border transition-colors last:border-b-0 hover:bg-muted/30">
                                 <td class="px-5 py-3.5">
-                                    <div
-                                        class="size-11 overflow-hidden rounded-lg border border-border bg-muted"
-                                    >
-                                        <img
-                                            v-if="product.image"
-                                            :src="product.image"
-                                            :alt="product.name"
-                                            class="size-full object-cover"
-                                        />
-                                        <div
-                                            v-else
-                                            class="flex size-full items-center justify-center text-xs text-muted-foreground"
-                                        >
+                                    <div class="size-11 overflow-hidden rounded-lg border border-border bg-muted">
+                                        <img v-if="product.image" :src="product.image" :alt="product.name"
+                                            class="size-full object-cover" />
+                                        <div v-else
+                                            class="flex size-full items-center justify-center text-xs text-muted-foreground">
                                             —
                                         </div>
                                     </div>
@@ -347,29 +255,33 @@ defineOptions({
                                     <div class="font-medium text-foreground">
                                         {{ product.name }}
                                     </div>
-                                    <div
-                                        class="font-mono text-xs text-muted-foreground"
-                                    >
+                                    <div class="font-mono text-xs text-muted-foreground">
                                         {{ product.slug }}
                                     </div>
                                 </td>
                                 <td class="px-5 py-3.5 text-foreground">
                                     <span>{{ product.category.name }}</span>
-                                    <span
-                                        v-if="product.category.is_deleted"
-                                        class="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                                    >
+                                    <span v-if="product.category.is_deleted"
+                                        class="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                                         Deleted
                                     </span>
+                                </td>
+                                <td class="px-5 py-3.5 text-foreground">
+                                    <template v-if="product.brand">
+                                        <span>{{ product.brand.name }}</span>
+                                        <span v-if="product.brand.is_deleted"
+                                            class="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                                            Deleted
+                                        </span>
+                                    </template>
+                                    <span v-else class="text-muted-foreground">—</span>
                                 </td>
                                 <td class="px-5 py-3.5">
                                     <div class="font-medium text-foreground">
                                         {{ formatTaka(product.price) }}
                                     </div>
-                                    <div
-                                        v-if="product.compare_at_price"
-                                        class="text-xs text-muted-foreground line-through"
-                                    >
+                                    <div v-if="product.compare_at_price"
+                                        class="text-xs text-muted-foreground line-through">
                                         {{
                                             formatTaka(product.compare_at_price)
                                         }}
@@ -378,21 +290,15 @@ defineOptions({
                                 <td class="px-5 py-3.5">
                                     <span
                                         class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-                                        :class="
-                                            product.stock_status === 'in_stock'
+                                        :class="product.stock_status === 'in_stock'
                                                 ? 'bg-[#00BC7D]/10 text-[#00754F]'
                                                 : 'bg-destructive/10 text-destructive'
-                                        "
-                                    >
-                                        <span
-                                            class="size-1.5 rounded-full"
-                                            :class="
-                                                product.stock_status ===
+                                            ">
+                                        <span class="size-1.5 rounded-full" :class="product.stock_status ===
                                                 'in_stock'
-                                                    ? 'bg-[#00BC7D]'
-                                                    : 'bg-destructive'
-                                            "
-                                        />
+                                                ? 'bg-[#00BC7D]'
+                                                : 'bg-destructive'
+                                            " />
                                         {{
                                             product.stock_status === 'in_stock'
                                                 ? 'In stock'
@@ -407,124 +313,77 @@ defineOptions({
                                     <div class="flex flex-wrap gap-1.5">
                                         <span
                                             class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-                                            :class="
-                                                product.is_active
+                                            :class="product.is_active
                                                     ? 'bg-[#00BC7D]/10 text-[#00754F]'
                                                     : 'bg-muted text-muted-foreground'
-                                            "
-                                        >
-                                            <span
-                                                class="size-1.5 rounded-full"
-                                                :class="
-                                                    product.is_active
-                                                        ? 'bg-[#00BC7D]'
-                                                        : 'bg-muted-foreground/50'
-                                                "
-                                            />
+                                                ">
+                                            <span class="size-1.5 rounded-full" :class="product.is_active
+                                                    ? 'bg-[#00BC7D]'
+                                                    : 'bg-muted-foreground/50'
+                                                " />
                                             {{
                                                 product.is_active
                                                     ? 'Active'
                                                     : 'Inactive'
                                             }}
                                         </span>
-                                        <span
-                                            v-if="product.is_featured"
-                                            class="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground"
-                                        >
+                                        <span v-if="product.is_featured"
+                                            class="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
                                             Featured
                                         </span>
-                                        <span
-                                            v-if="product.is_best_seller"
-                                            class="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground"
-                                        >
+                                        <span v-if="product.is_best_seller"
+                                            class="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
                                             Best seller
                                         </span>
                                     </div>
                                 </td>
                                 <td class="px-5 py-3.5">
-                                    <div
-                                        class="flex items-center justify-end gap-1.5"
-                                    >
-                                        <Button
-                                            as-child
-                                            variant="ghost"
-                                            size="icon"
-                                            class="size-8 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                        >
-                                            <Link
-                                                :href="show(product.id)"
-                                                :aria-label="`View ${product.name}`"
-                                            >
+                                    <div class="flex items-center justify-end gap-1.5">
+                                        <Button as-child variant="ghost" size="icon"
+                                            class="size-8 text-muted-foreground hover:bg-muted hover:text-foreground">
+                                            <Link :href="show(product.id)" :aria-label="`View ${product.name}`">
                                                 <Eye class="size-4" />
                                             </Link>
                                         </Button>
-                                        <Button
-                                            as-child
-                                            variant="ghost"
-                                            size="icon"
-                                            class="size-8 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                        >
-                                            <Link
-                                                :href="edit(product.id)"
-                                                :aria-label="`Edit ${product.name}`"
-                                            >
+                                        <Button as-child variant="ghost" size="icon"
+                                            class="size-8 text-muted-foreground hover:bg-muted hover:text-foreground">
+                                            <Link :href="edit(product.id)" :aria-label="`Edit ${product.name}`">
                                                 <Pencil class="size-4" />
                                             </Link>
                                         </Button>
                                         <Dialog>
                                             <DialogTrigger as-child>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     class="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                                    :aria-label="`Delete ${product.name}`"
-                                                >
+                                                    :aria-label="`Delete ${product.name}`">
                                                     <Trash2 class="size-4" />
                                                 </Button>
                                             </DialogTrigger>
                                             <DialogContent>
-                                                <Form
-                                                    v-bind="
-                                                        ProductController.destroy.form(
-                                                            product.id,
-                                                        )
-                                                    "
-                                                    :options="{
+                                                <Form v-bind="ProductController.destroy.form(
+                                                    product.id,
+                                                )
+                                                    " :options="{
                                                         preserveScroll: true,
-                                                    }"
-                                                    v-slot="{ processing }"
-                                                >
-                                                    <DialogHeader
-                                                        class="space-y-3"
-                                                    >
-                                                        <DialogTitle
-                                                            >Delete
-                                                            product?</DialogTitle
-                                                        >
+                                                    }" v-slot="{ processing }">
+                                                    <DialogHeader class="space-y-3">
+                                                        <DialogTitle>Delete
+                                                            product?</DialogTitle>
                                                         <DialogDescription>
                                                             This will remove
                                                             <strong>{{
                                                                 product.name
-                                                            }}</strong>
+                                                                }}</strong>
                                                             from your catalog.
                                                         </DialogDescription>
                                                     </DialogHeader>
 
                                                     <DialogFooter class="gap-2">
                                                         <DialogClose as-child>
-                                                            <Button
-                                                                type="button"
-                                                                variant="secondary"
-                                                                >Cancel</Button
-                                                            >
+                                                            <Button type="button" variant="secondary">Cancel</Button>
                                                         </DialogClose>
-                                                        <Button
-                                                            type="submit"
-                                                            variant="destructive"
-                                                            :disabled="
-                                                                processing
-                                                            "
-                                                        >
+                                                        <Button type="submit" variant="destructive" :disabled="processing
+                                                            ">
                                                             Delete
                                                         </Button>
                                                     </DialogFooter>

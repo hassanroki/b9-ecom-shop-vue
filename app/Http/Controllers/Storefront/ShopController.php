@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Storefront;
 
 use App\Http\Controllers\Controller;
+use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,6 +31,7 @@ class ShopController extends Controller
 
         return Inertia::render('shop/Shop', [
             'categories' => fn() => $this->categoryFilters(),
+            'brands' => fn() => $this->brandFilters(),
             'products' => $paginator->getCollection()
                 ->map(fn(Product $product) => $this->mapCatalogProduct($product))
                 ->all(),
@@ -46,6 +48,7 @@ class ShopController extends Controller
     /**
      * @return array{
      *     categories: list<string>,
+     *     brands: list<string>,
      *     price: string,
      *     inStock: bool,
      *     sort: string,
@@ -59,11 +62,16 @@ class ShopController extends Controller
             array_map('strval', (array) $request->input('categories', [])),
         ));
 
+        $brands = array_values(array_filter(
+            array_map('strval', (array) $request->input('brands', [])),
+        ));
+
         $price = (string) $request->input('price', 'all');
         $sort = (string) $request->input('sort', 'newest');
 
         return [
             'categories' => $categories,
+            'brands' => $brands,
             'price' => in_array($price, self::VALID_PRICE_RANGES, true) ? $price : 'all',
             'inStock' => $request->boolean('in_stock'),
             'sort' => in_array($sort, self::VALID_SORTS, true) ? $sort : 'newest',
@@ -73,7 +81,7 @@ class ShopController extends Controller
     }
 
     /**
-     * @param  array{categories: list<string>, price: string, inStock: bool, sort: string, search: string, page: int}  $filters
+     * @param  array{categories: list<string>, brands: list<string>, price: string, inStock: bool, sort: string, search: string, page: int}  $filters
      */
     private function catalogQuery(array $filters): Builder
     {
@@ -81,6 +89,7 @@ class ShopController extends Controller
             ->where('is_active', true)
             ->with([
                 'category',
+                'brand',
                 'images' => fn($q) => $q->where('is_primary', true),
             ])
             ->withAvg(['reviews' => fn($q) => $q->where('is_approved', true)], 'rating')
@@ -89,6 +98,11 @@ class ShopController extends Controller
         if (! empty($filters['categories'])) {
             $slugs = $filters['categories'];
             $query->whereHas('category', fn(Builder $q) => $q->whereIn('slug', $slugs));
+        }
+
+        if (! empty($filters['brands'])) {
+            $slugs = $filters['brands'];
+            $query->whereHas('brand', fn(Builder $q) => $q->whereIn('slug', $slugs));
         }
 
         [$min, $max] = $this->parsePriceRange($filters['price']);
@@ -158,16 +172,31 @@ class ShopController extends Controller
     }
 
     /**
+     * @return list<array{name: string, slug: string}>
+     */
+    private function brandFilters(): array
+    {
+        return Brand::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['name', 'slug'])
+            ->map(fn(Brand $brand): array => [
+                'name' => $brand->name,
+                'slug' => $brand->slug,
+            ])
+            ->all();
+    }
+
+    /**
      * @return array{
      *     id: int, name: string, slug: string, price: float, oldPrice: float|null,
      *     img: string, rating: float, reviews: int, inStock: bool,
-     *     category: string, tag: string|null, sold: int
+     *     category: string, brand: string|null, tag: string|null, sold: int
      * }
      */
     private function mapCatalogProduct(Product $product): array
     {
         $primaryImage = $product->images->first();
-        $imagePath = $primaryImage?->image_path;
 
         return [
             'id' => $product->id,
@@ -177,13 +206,12 @@ class ShopController extends Controller
             'oldPrice' => $product->compare_at_price !== null
                 ? (float) $product->compare_at_price
                 : null,
-            'img' => $imagePath
-                ? (str_starts_with($imagePath, 'http') ? $imagePath : Storage::url($imagePath))
-                : null,
+            'img' => \App\Support\ImageUrl::resolve($primaryImage?->image_path),
             'rating' => round((float) ($product->reviews_avg_rating ?? 0), 1),
             'reviews' => (int) $product->reviews_count,
             'inStock' => $product->stock_status === 'in_stock',
-            'category' => $product->category->name,
+            'category' => $product->category->name ?? 'Uncategorized',
+            'brand' => $product->brand->name ?? null,
             'tag' => $product->is_best_seller ? 'Best Seller' : ($product->is_featured ? 'New' : null),
             'sold' => $product->sold_count,
         ];

@@ -40,7 +40,7 @@ function onTouchEnd(event: TouchEvent): void {
             </div>
 
             <button type="button" aria-label="Previous slide"
-                class="absolute top-1/2 left-4 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-900 shadow transition hover:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none md:flex"
+                class="absolute top-1/2 left-4 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 shadow transition hover:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none md:flex"
                 @click="
                     prev();
                 startAuto();
@@ -50,7 +50,7 @@ function onTouchEnd(event: TouchEvent): void {
                 </svg>
             </button>
             <button type="button" aria-label="Next slide"
-                class="absolute top-1/2 right-4 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-900 shadow transition hover:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none md:flex"
+                class="absolute top-1/2 right-4 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 shadow transition hover:bg-white focus:ring-2 focus:ring-shop-primary-600 focus:outline-none md:flex"
                 @click="
                     next();
                 startAuto();

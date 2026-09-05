@@ -27,6 +27,7 @@ class ProductController extends Controller
             ->where('is_active', true)
             ->with([
                 'category',
+                'brand',
                 'images' => fn($query) => $query->orderBy('sort_order'),
                 'reviews' => fn($query) => $query
                     ->where('is_approved', true)
@@ -51,6 +52,7 @@ class ProductController extends Controller
      *     name: string,
      *     category: string,
      *     categoryHref: string,
+     *     brand: string|null,
      *     price: float,
      *     oldPrice: float|null,
      *     img: string,
@@ -59,7 +61,7 @@ class ProductController extends Controller
      *     inStock: bool,
      *     tag: string|null,
      *     summary: string,
-     *     description: list<string>,
+     *     description: string,
      *     features: list<string>,
      *     images: list<array{full: string, thumb: string}>,
      *     ratingBreakdown: list<array{stars: int, percent: int}>,
@@ -71,12 +73,17 @@ class ProductController extends Controller
         $primaryImage = $product->images->firstWhere('is_primary', true)
             ?? $product->images->first();
 
+        $categoryName = $product->category->name ?? 'Uncategorized';
+
         return [
             'id' => $product->id,
             'slug' => $product->slug,
             'name' => $product->name,
-            'category' => $product->category->name,
-            'categoryHref' => route('shop.index', ['category' => $product->category->name]),
+            'category' => $categoryName,
+            'categoryHref' => $product->category
+                ? route('shop.index', ['category' => $categoryName])
+                : route('shop.index'),
+            'brand' => $product->brand->name ?? null,
             'price' => (float) $product->price,
             'oldPrice' => $product->compare_at_price !== null
                 ? (float) $product->compare_at_price
@@ -87,7 +94,7 @@ class ProductController extends Controller
             'inStock' => $product->stock_status === 'in_stock',
             'tag' => $this->productTag($product),
             'summary' => $product->short_description ?? '',
-            'description' => $this->descriptionParagraphs($product->description),
+            'description' => $product->description ?? '',
             'features' => [],
             'images' => $this->mapImages($product->images),
             'ratingBreakdown' => $this->ratingBreakdown($product->reviews),
@@ -152,21 +159,6 @@ class ProductController extends Controller
         }
 
         return null;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function descriptionParagraphs(?string $description): array
-    {
-        if ($description === null || trim($description) === '') {
-            return [];
-        }
-
-        return array_values(array_filter(
-            preg_split('/\R{2,}/', trim($description)) ?: [],
-            fn(string $paragraph): bool => trim($paragraph) !== '',
-        ));
     }
 
     /**

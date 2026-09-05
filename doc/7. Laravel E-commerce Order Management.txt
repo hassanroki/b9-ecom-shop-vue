@@ -844,7 +844,7 @@ function printInvoice(): void {
 
         <!-- Fulfillment stepper -->
         <Card v-if="order.status !== 'cancelled'"
-            class="border-none shadow-sm bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:to-background">
+            class="border-none shadow-sm bg-gradient-to-br from-slate-50 to-white dark:from-slate-700/40 dark:to-background">
             <CardContent class="pt-6 pb-5">
                 <div class="relative flex items-start justify-between">
                     <!-- Background connector -->
@@ -873,7 +873,7 @@ function printInvoice(): void {
 
         <!-- Cancelled banner -->
         <div v-if="order.status === 'cancelled'"
-            class="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-400">
+            class="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-950/30 dark:text-red-400">
             <XCircle class="size-5 shrink-0 text-red-500" />
             <p>
                 This order has been <strong>cancelled</strong>.
@@ -891,7 +891,7 @@ function printInvoice(): void {
                         class="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/30 border-b">
                         <CardTitle class="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
                             <div
-                                class="flex size-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/50">
+                                class="flex size-7 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-700/50">
                                 <Package class="size-4 text-indigo-600 dark:text-indigo-400" />
                             </div>
                             Line items
@@ -924,7 +924,7 @@ function printInvoice(): void {
                                     <td class="px-5 py-4 font-medium">{{ item.product_name }}</td>
                                     <td class="px-4 py-4 text-center">
                                         <span
-                                            class="inline-flex size-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+                                            class="inline-flex size-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-700/50 dark:text-indigo-300">
                                             {{ item.quantity }}
                                         </span>
                                     </td>
@@ -935,13 +935,13 @@ function printInvoice(): void {
                                 </tr>
                             </tbody>
                             <tfoot>
-                                <tr class="border-t bg-slate-50 dark:bg-slate-900/30">
+                                <tr class="border-t bg-slate-50 dark:bg-slate-700/30">
                                     <td colspan="3" class="px-5 py-2.5 text-right text-xs text-muted-foreground">
                                         Subtotal</td>
                                     <td class="px-5 py-2.5 text-right text-sm font-medium">{{ formatTaka(order.subtotal)
                                         }}</td>
                                 </tr>
-                                <tr class="bg-slate-50 dark:bg-slate-900/30">
+                                <tr class="bg-slate-50 dark:bg-slate-700/30">
                                     <td colspan="3" class="px-5 py-2.5 text-right text-xs text-muted-foreground">
                                         Delivery charge</td>
                                     <td class="px-5 py-2.5 text-right text-sm font-medium">{{
@@ -964,7 +964,7 @@ function printInvoice(): void {
                         class="bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 border-b">
                         <CardTitle class="flex items-center gap-2 text-violet-700 dark:text-violet-400">
                             <div
-                                class="flex size-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/50">
+                                class="flex size-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-700/50">
                                 <Clock class="size-4 text-violet-600 dark:text-violet-400" />
                             </div>
                             Status history
@@ -1016,7 +1016,7 @@ function printInvoice(): void {
                         class="bg-gradient-to-r from-sky-50 to-cyan-50 dark:from-sky-950/30 dark:to-cyan-950/30 border-b">
                         <CardTitle class="flex items-center gap-2 text-sky-700 dark:text-sky-400">
                             <div
-                                class="flex size-7 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/50">
+                                class="flex size-7 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-700/50">
                                 <User class="size-4 text-sky-600 dark:text-sky-400" />
                             </div>
                             Customer
@@ -1038,14 +1038,14 @@ function printInvoice(): void {
                         <Separator />
                         <div class="flex items-center gap-3">
                             <div
-                                class="flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-100 dark:bg-sky-900/40">
+                                class="flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-100 dark:bg-sky-700/40">
                                 <Phone class="size-3.5 text-sky-600 dark:text-sky-400" />
                             </div>
                             <span>{{ order.phone }}</span>
                         </div>
                         <div class="flex items-center gap-3">
                             <div
-                                class="flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-100 dark:bg-sky-900/40">
+                                class="flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-100 dark:bg-sky-700/40">
                                 <Mail class="size-3.5 text-sky-600 dark:text-sky-400" />
                             </div>
                             <span class="break-all">{{ order.email }}</span>
@@ -1059,7 +1059,7 @@ function printInvoice(): void {
                         class="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 border-b">
                         <CardTitle class="flex items-center gap-2 text-orange-700 dark:text-orange-400">
                             <div
-                                class="flex size-7 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/50">
+                                class="flex size-7 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-700/50">
                                 <MapPin class="size-4 text-orange-600 dark:text-orange-400" />
                             </div>
                             Shipping address
@@ -1073,7 +1073,7 @@ function printInvoice(): void {
                             </p>
                         </div>
                         <div v-if="order.notes"
-                            class="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+                            class="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-700/40 dark:bg-amber-950/20">
                             <p
                                 class="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
                                 Delivery note
@@ -1089,7 +1089,7 @@ function printInvoice(): void {
                         class="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border-b">
                         <CardTitle class="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
                             <div
-                                class="flex size-7 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/50">
+                                class="flex size-7 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-700/50">
                                 <Package class="size-4 text-emerald-600 dark:text-emerald-400" />
                             </div>
                             Payment summary
@@ -1139,7 +1139,7 @@ function printInvoice(): void {
                         class="bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 border-b">
                         <CardTitle class="flex items-center gap-2 text-violet-700 dark:text-violet-400">
                             <div
-                                class="flex size-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/50">
+                                class="flex size-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-700/50">
                                 <RotateCcw class="size-4 text-violet-600 dark:text-violet-400" />
                             </div>
                             Update order
@@ -1285,7 +1285,7 @@ function printInvoice(): void {
 
     .invoice-brand h1 {
         font-size: 28px;
-        font-weight: 900;
+        font-weight: 700;
         margin: 0 0 4px;
         color: white;
         letter-spacing: -0.5px;
@@ -1820,7 +1820,7 @@ index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
                     }),
             method: 'get',
         })
-    
+
     index.form = indexForm
 /**
 * @see \App\Http\Controllers\Admin\OrderController::show
@@ -1850,7 +1850,7 @@ show.url = (args: { order: number | { id: number } } | [order: number | { id: nu
             if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
             args = { order: args.id }
         }
-    
+
     if (Array.isArray(args)) {
         args = {
                     order: args[0],
@@ -1922,7 +1922,7 @@ show.head = (args: { order: number | { id: number } } | [order: number | { id: n
                     }),
             method: 'get',
         })
-    
+
     show.form = showForm
 /**
 * @see \App\Http\Controllers\Admin\OrderController::update
@@ -1952,7 +1952,7 @@ update.url = (args: { order: number | { id: number } } | [order: number | { id: 
             if (typeof args === 'object' && !Array.isArray(args) && 'id' in args) {
             args = { order: args.id }
         }
-    
+
     if (Array.isArray(args)) {
         args = {
                     order: args[0],
@@ -2034,7 +2034,7 @@ update.patch = (args: { order: number | { id: number } } | [order: number | { id
                     }),
             method: 'post',
         })
-    
+
     update.form = updateForm
 const orders = {
     index: Object.assign(index, index),

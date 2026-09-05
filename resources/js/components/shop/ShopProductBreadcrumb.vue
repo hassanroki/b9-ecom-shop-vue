@@ -21,7 +21,7 @@ const { category, categoryHref, productName } = defineProps<{
                     <a :href="categoryHref" class="hover:text-shop-primary-600">{{ category }}</a>
                 </li>
                 <li aria-hidden="true" class="text-gray-300">/</li>
-                <li aria-current="page" class="font-medium text-gray-900">
+                <li aria-current="page" class="font-medium text-gray-700">
                     {{ productName }}
                 </li>
             </ol>
