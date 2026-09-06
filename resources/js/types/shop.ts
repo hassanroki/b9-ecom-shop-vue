@@ -67,11 +67,12 @@ export type ShopBrandFilter = {
     name: string;
     slug: string;
 };
-export type ShopBrand = {
+
+export interface ShopBrand {
     name: string;
-    img: string;
+    img: string | null;
     href: string;
-};
+}
 
 export type ShopFilters = {
     categories: string[];
