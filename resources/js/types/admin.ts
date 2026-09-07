@@ -346,3 +346,29 @@ export interface CouponFormData {
     expires_at: string;
     is_active: boolean;
 }
+
+export interface AdminNewsletterListItem {
+    id: number;
+    email: string;
+    created_at: string;
+}
+
+export interface PaginationLink {
+    url: string | null;
+    label: string;
+    active: boolean;
+}
+
+export interface AdminNewsletterPaginated {
+    data: AdminNewsletterListItem[];
+    links: PaginationLink[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+}
+
+export interface AdminNewsletterFilters {
+    search: string;
+}

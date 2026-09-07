@@ -17,6 +17,7 @@ use App\Http\Controllers\Storefront\WishlistController;
 use App\Http\Controllers\Storefront\Api\SearchSuggestionController;
 use App\Http\Controllers\Storefront\BrandController;
 use App\Http\Controllers\Storefront\CategoryController;
+use App\Http\Controllers\Storefront\NewsletterController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', HomeController::class)->name('home');
@@ -24,6 +25,8 @@ Route::get('/shop', ShopController::class)->name('shop.index');
 Route::get('/products/{slug}', [ProductController::class, 'show'])->name('shop.products.show');
 Route::get('/categories', [CategoryController::class, 'categoryList'])->name('category.list');
 Route::get('/brands', [BrandController::class, 'brandList'])->name('brand.list');
+Route::post('/newsletter/subscribe', [NewsletterController::class, 'store'])
+    ->name('shop.newsletter.subscribe');
 
 // Search
 Route::get('/api/search-suggestions', SearchSuggestionController::class)
