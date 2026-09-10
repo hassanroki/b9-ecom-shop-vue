@@ -1,10 +1,48 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { useForm } from '@inertiajs/vue3';
 import { formatDate } from '@/lib/customer/orderStatus';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import InputError from '@/components/InputError.vue';
+import { useShopUi } from '@/composables/shop/useShopUi';
+import profile from '@/routes/customer/profile';
 
-defineProps<{
+const props = defineProps<{
     user: any;
 }>();
+
+const { showToast } = useShopUi();
+
+const isOpen = ref(false);
+
+const form = useForm({
+    name: props.user.name,
+    email: props.user.email,
+    phone: props.user.phone ?? '',
+});
+
+function submit(): void {
+    form.patch(profile.update().url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showToast('Profile updated successfully.');
+            isOpen.value = false;
+        },
+        onError: () => {
+            showToast('Please check the form for errors.');
+        },
+    });
+}
 </script>
 
 <template>
@@ -34,15 +72,86 @@ defineProps<{
             </div>
 
             <div class="mt-8 flex justify-end border-t border-gray-100 pt-6">
-                <Link
-                    href="/customer/profile/edit"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-shop-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-shop-primary-700"
-                >
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                    Edit Account details
-                </Link>
+                <Dialog v-model:open="isOpen">
+                    <DialogTrigger as-child>
+                        <Button
+                            class="inline-flex items-center justify-center gap-2 rounded-lg bg-shop-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-shop-primary-700"
+                        >
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            Edit Account details
+                        </Button>
+                    </DialogTrigger>
+
+                    <DialogContent>
+                        <form @submit.prevent="submit">
+                            <DialogHeader class="space-y-1.5">
+                                <DialogTitle>Edit Account Details</DialogTitle>
+                                <DialogDescription>
+                                    Update your name, email and phone number.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div class="mt-6 space-y-4">
+                                <div>
+                                    <label for="name" class="mb-1.5 block text-sm font-medium text-gray-700">
+                                        Full Name
+                                    </label>
+                                    <input
+                                        id="name"
+                                        v-model="form.name"
+                                        type="text"
+                                        required
+                                        class="h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-700 outline-none transition-shadow focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600/20"
+                                    />
+                                    <InputError :message="form.errors.name" />
+                                </div>
+
+                                <div>
+                                    <label for="email" class="mb-1.5 block text-sm font-medium text-gray-700">
+                                        Email Address
+                                    </label>
+                                    <input
+                                        id="email"
+                                        v-model="form.email"
+                                        type="email"
+                                        required
+                                        class="h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-700 outline-none transition-shadow focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600/20"
+                                    />
+                                    <InputError :message="form.errors.email" />
+                                </div>
+
+                                <div>
+                                    <label for="phone" class="mb-1.5 block text-sm font-medium text-gray-700">
+                                        Phone Number
+                                    </label>
+                                    <input
+                                        id="phone"
+                                        v-model="form.phone"
+                                        type="text"
+                                        placeholder="e.g. 01XXXXXXXXX"
+                                        class="h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-700 outline-none transition-shadow focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600/20"
+                                    />
+                                    <InputError :message="form.errors.phone" />
+                                </div>
+                            </div>
+
+                            <DialogFooter class="mt-8 gap-2">
+                                <DialogClose as-child>
+                                    <Button type="button" variant="secondary">Cancel</Button>
+                                </DialogClose>
+                                <Button
+                                    type="submit"
+                                    :disabled="form.processing"
+                                    class="bg-shop-primary-600 text-white hover:bg-shop-primary-700"
+                                >
+                                    {{ form.processing ? 'Saving…' : 'Save changes' }}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </div>
         </div>
     </div>

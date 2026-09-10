@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Customer\CustomerPasswordController;
 use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\Storefront\CartController;
 use App\Http\Controllers\Storefront\CheckoutController;
@@ -92,6 +93,9 @@ Route::middleware(['auth'])->prefix('customer')->name('customer.')->group(functi
 
     Route::get('/profile/edit', [CustomerProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [CustomerProfileController::class, 'update'])->name('profile.update');
+
+    Route::put('/password', [CustomerPasswordController::class, 'update'])->middleware('throttle:6,1')
+        ->name('password.update');
 });
 
 require __DIR__ . '/settings.php';

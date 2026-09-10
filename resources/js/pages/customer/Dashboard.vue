@@ -7,6 +7,7 @@ import DashboardSidebar from '@/components/customer/DashboardSidebar.vue';
 import DashboardOverview from '@/components/customer/DashboardOverview.vue';
 import DashboardOrders from '@/components/customer/DashboardOrders.vue';
 import DashboardProfile from '@/components/customer/DashboardProfile.vue';
+import CustomerPasswordForm from '@/components/customer/CustomerPasswordForm.vue';
 
 const page = usePage();
 const user = computed(() => page.props.auth.user as any);
@@ -20,6 +21,7 @@ const activeTab = ref('overview');
 
 <template>
     <ShopLayout>
+
         <Head title="My Dashboard" />
 
         <div class="min-h-screen bg-gray-50/50 py-8">
@@ -27,23 +29,17 @@ const activeTab = ref('overview');
                 <ShopPageBreadcrumb :items="[{ label: 'Dashboard' }]" />
 
                 <div class="mt-6 md:grid md:grid-cols-4 md:gap-8">
-                    <DashboardSidebar
-                        :user="user"
-                        :active-tab="activeTab"
-                        @update:active-tab="activeTab = $event"
-                    />
+                    <DashboardSidebar :user="user" :active-tab="activeTab" @update:active-tab="activeTab = $event" />
 
                     <main class="md:col-span-3">
-                        <DashboardOverview
-                            v-if="activeTab === 'overview'"
-                            :user="user"
-                            :orders="orders"
-                            @update:active-tab="activeTab = $event"
-                        />
+                        <DashboardOverview v-if="activeTab === 'overview'" :user="user" :orders="orders"
+                            @update:active-tab="activeTab = $event" />
 
                         <DashboardOrders v-if="activeTab === 'orders'" :orders="orders" />
 
                         <DashboardProfile v-if="activeTab === 'profile'" :user="user" />
+
+                        <CustomerPasswordForm v-if="activeTab === 'settings'" />
                     </main>
                 </div>
             </div>
