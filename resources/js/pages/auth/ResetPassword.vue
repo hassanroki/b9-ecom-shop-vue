@@ -3,17 +3,11 @@ import { Form, Head } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
+import ShopLayout from '@/layouts/shop/ShopLayout.vue';
 import { update } from '@/routes/password';
 
 defineOptions({
-    layout: {
-        title: 'Reset password',
-        description: 'Please enter your new password below',
-    },
+    layout: ShopLayout,
 });
 
 const props = defineProps<{
@@ -26,65 +20,92 @@ const inputEmail = ref(props.email);
 </script>
 
 <template>
-    <Head title="Reset password" />
 
-    <Form
-        v-bind="update.form()"
-        :transform="(data) => ({ ...data, token, email })"
-        :reset-on-success="['password', 'password_confirmation']"
-        v-slot="{ errors, processing }"
-    >
-        <div class="grid gap-6">
-            <div class="grid gap-2">
-                <Label for="email">Email</Label>
-                <Input
-                    id="email"
-                    type="email"
-                    name="email"
-                    autocomplete="email"
-                    v-model="inputEmail"
-                    class="mt-1 block w-full"
-                    readonly
-                />
-                <InputError :message="errors.email" class="mt-2" />
+    <Head title="Reset password">
+        <meta name="description" content="Please enter your new password below" />
+    </Head>
+
+    <div class="flex min-h-[75vh] items-center justify-center bg-gray-50 px-4 py-16">
+        <div class="w-full max-w-md">
+            <!-- Brand mark -->
+            <div class="mb-8 flex flex-col items-center gap-2 text-center">
+                <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-shop-primary-600">
+                    <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                        stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 10-8 0v4h8z" />
+                    </svg>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-800">Reset password</h1>
+                <p class="text-sm text-gray-500">Please enter your new password below</p>
             </div>
 
-            <div class="grid gap-2">
-                <Label for="password">Password</Label>
-                <PasswordInput
-                    id="password"
-                    name="password"
-                    autocomplete="new-password"
-                    class="mt-1 block w-full"
-                    autofocus
-                    placeholder="Password"
-                    :passwordrules="passwordRules"
-                />
-                <InputError :message="errors.password" />
-            </div>
+            <!-- Card -->
+            <div class="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
+                <Form v-bind="update.form()" :transform="(data) => ({ ...data, token, email })"
+                    :reset-on-success="['password', 'password_confirmation']" v-slot="{ errors, processing }"
+                    class="flex flex-col gap-5">
+                    <div class="flex flex-col gap-1.5">
+                        <label for="email" class="text-sm font-medium text-gray-700">
+                            Email
+                        </label>
+                        <div class="relative">
+                            <svg class="pointer-events-none absolute top-1/2 left-3.5 h-5 w-5 -translate-y-1/2 text-gray-400"
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            <input id="email" type="email" name="email" autocomplete="email" v-model="inputEmail"
+                                readonly
+                                class="h-11 w-full cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 pl-11 pr-4 text-sm text-gray-500 outline-none" />
+                        </div>
+                        <InputError :message="errors.email" />
+                    </div>
 
-            <div class="grid gap-2">
-                <Label for="password_confirmation"> Confirm password </Label>
-                <PasswordInput
-                    id="password_confirmation"
-                    name="password_confirmation"
-                    autocomplete="new-password"
-                    class="mt-1 block w-full"
-                    placeholder="Confirm password"
-                    :passwordrules="passwordRules"
-                />
-                <InputError :message="errors.password_confirmation" />
-            </div>
+                    <div class="flex flex-col gap-1.5">
+                        <label for="password" class="text-sm font-medium text-gray-700">
+                            New Password
+                        </label>
+                        <div class="relative">
+                            <svg class="pointer-events-none absolute top-1/2 left-3.5 z-10 h-5 w-5 -translate-y-1/2 text-gray-400"
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 10-8 0v4h8z" />
+                            </svg>
+                            <PasswordInput id="password" name="password" autocomplete="new-password" autofocus
+                                placeholder="••••••••" :passwordrules="passwordRules"
+                                class="h-11 w-full rounded-xl border border-gray-300 bg-white pl-11 pr-4 text-sm text-gray-700 outline-none transition-shadow placeholder:text-gray-400 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600/20" />
+                        </div>
+                        <InputError :message="errors.password" />
+                    </div>
 
-            <Button
-                type="submit"
-                class="mt-4 w-full"
-                :disabled="processing"
-                data-test="reset-password-button"
-            >
-                <Spinner v-if="processing" />
-                Reset password
-            </Button>
+                    <div class="flex flex-col gap-1.5">
+                        <label for="password_confirmation" class="text-sm font-medium text-gray-700">
+                            Confirm New Password
+                        </label>
+                        <div class="relative">
+                            <svg class="pointer-events-none absolute top-1/2 left-3.5 z-10 h-5 w-5 -translate-y-1/2 text-gray-400"
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 10-8 0v4h8z" />
+                            </svg>
+                            <PasswordInput id="password_confirmation" name="password_confirmation"
+                                autocomplete="new-password" placeholder="••••••••" :passwordrules="passwordRules"
+                                class="h-11 w-full rounded-xl border border-gray-300 bg-white pl-11 pr-4 text-sm text-gray-700 outline-none transition-shadow placeholder:text-gray-400 focus:border-shop-primary-600 focus:ring-2 focus:ring-shop-primary-600/20" />
+                        </div>
+                        <InputError :message="errors.password_confirmation" />
+                    </div>
+
+                    <button type="submit" :disabled="processing" data-test="reset-password-button"
+                        class="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-shop-primary-600 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-shop-primary-700 disabled:cursor-not-allowed disabled:opacity-60">
+                        <svg v-if="processing" class="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                        </svg>
+                        Reset password
+                    </button>
+                </Form>
+            </div>
         </div>
-    </Form>
+    </div>
 </template>

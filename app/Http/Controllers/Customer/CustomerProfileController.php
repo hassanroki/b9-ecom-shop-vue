@@ -11,6 +11,7 @@ use Inertia\Response;
 
 class CustomerProfileController extends Controller
 {
+    // Customer Profile Edit
     public function edit(): Response
     {
         $user = Auth::user();
@@ -24,8 +25,10 @@ class CustomerProfileController extends Controller
         ]);
     }
 
+    // Update Customer Profile
     public function update(Request $request): RedirectResponse
     {
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         $validated = $request->validate([
