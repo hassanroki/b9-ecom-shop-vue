@@ -4,6 +4,7 @@ import {
     index as confirmOptions,
     store as confirmStore,
 } from '@/actions/Laravel/Passkeys/Http/Controllers/PasskeyConfirmationController';
+import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import PasskeyVerify from '@/components/PasskeyVerify.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
@@ -14,9 +15,12 @@ import { store } from '@/routes/password/confirm';
 
 defineOptions({
     layout: {
-        title: 'Confirm password',
-        description:
-            'This is a secure area of the application. Please confirm your password before continuing.',
+        breadcrumbs: [
+            {
+                title: 'Confirm password',
+                href: store(),
+            },
+        ],
     },
 });
 </script>
@@ -24,46 +28,56 @@ defineOptions({
 <template>
     <Head title="Confirm password" />
 
-    <PasskeyVerify
-        :routes="{
-            options: confirmOptions(),
-            submit: confirmStore(),
-        }"
-        label="Confirm with passkey"
-        loading-label="Confirming..."
-        separator="Or confirm with password"
-    />
+    <h1 class="sr-only">Confirm password</h1>
 
-    <Form
-        v-bind="store.form()"
-        reset-on-success
-        v-slot="{ errors, processing }"
-    >
-        <div class="space-y-6">
-            <div class="grid gap-2">
-                <Label htmlFor="password">Password</Label>
-                <PasswordInput
-                    id="password"
-                    name="password"
-                    class="mt-1 block w-full"
-                    required
-                    autocomplete="current-password"
-                    autofocus
-                />
+    <div class="space-y-6">
+        <Heading
+            variant="small"
+            title="Confirm password"
+            description="This is a secure area. Please confirm your password before continuing."
+        />
 
-                <InputError :message="errors.password" />
-            </div>
+        <div class="max-w-md">
+            <PasskeyVerify
+                :routes="{
+                    options: confirmOptions(),
+                    submit: confirmStore(),
+                }"
+                label="Confirm with passkey"
+                loading-label="Confirming..."
+                separator="Or confirm with password"
+            />
 
-            <div class="flex items-center">
-                <Button
-                    class="w-full"
-                    :disabled="processing"
-                    data-test="confirm-password-button"
-                >
-                    <Spinner v-if="processing" />
-                    Confirm password
-                </Button>
-            </div>
+            <Form
+                v-bind="store.form()"
+                reset-on-success
+                v-slot="{ errors, processing }"
+                class="mt-6 space-y-6"
+            >
+                <div class="grid gap-2">
+                    <Label htmlFor="password">Password</Label>
+                    <PasswordInput
+                        id="password"
+                        name="password"
+                        class="mt-1 block w-full"
+                        required
+                        autocomplete="current-password"
+                        autofocus
+                    />
+
+                    <InputError :message="errors.password" />
+                </div>
+
+                <div class="flex items-center">
+                    <Button
+                        :disabled="processing"
+                        data-test="confirm-password-button"
+                    >
+                        <Spinner v-if="processing" />
+                        Confirm password
+                    </Button>
+                </div>
+            </Form>
         </div>
-    </Form>
+    </div>
 </template>

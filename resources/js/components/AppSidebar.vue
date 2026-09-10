@@ -9,6 +9,7 @@ import {
     ShoppingCart,
     Tags,
     Ticket,
+    Star,
     Mail,
 } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
@@ -36,6 +37,8 @@ import { index as ordersIndex } from '@/routes/admin/orders';
 import { index as productsIndex } from '@/routes/admin/products';
 import { index as wishlistsIndex } from '@/routes/admin/wishlists';
 import { index as newslettersIndex } from '@/routes/admin/newsletters';
+import { index as reviewsIndex } from '@/routes/admin/review';
+
 
 const mainNavItems = ref([
     {
@@ -80,6 +83,11 @@ const mainNavItems = ref([
         title: 'Wishlists',
         href: wishlistsIndex(),
         icon: Heart,
+    },
+    {
+        title: 'Reviews',
+        href: reviewsIndex(),
+        icon: Star,
     },
     {
         title: 'Newsletters',

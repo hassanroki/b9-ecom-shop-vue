@@ -54,7 +54,7 @@ function submit(): void {
 <template>
     <Head :title="`Edit ${coupon.name}`" />
 
-    <div class="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+    <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <!-- Page Header -->
         <div
             class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"

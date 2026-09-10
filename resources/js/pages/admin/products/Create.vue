@@ -58,7 +58,7 @@ function submit(): void {
 
     <Head title="Create product" />
 
-    <div class="flex h-full flex-1 flex-col gap-5 p-4 md:p-6">
+    <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div class="flex items-center gap-3">
             <Button as-child variant="ghost" size="icon"
                 class="size-9 shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -71,7 +71,7 @@ function submit(): void {
             <Heading title="Create product" description="Add a new product to your catalog" />
         </div>
 
-        <div class="max-w-3xl overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div class="max-w-5xl overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <form class="p-6" @submit.prevent="submit">
                 <ProductForm :form="form" :categories="categories" :brands="brands" />
 

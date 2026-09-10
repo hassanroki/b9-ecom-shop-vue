@@ -18,6 +18,7 @@ use App\Http\Controllers\Storefront\Api\SearchSuggestionController;
 use App\Http\Controllers\Storefront\BrandController;
 use App\Http\Controllers\Storefront\CategoryController;
 use App\Http\Controllers\Storefront\NewsletterController;
+use App\Http\Controllers\Storefront\ReviewController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', HomeController::class)->name('home');
@@ -44,7 +45,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/wishlist', [WishlistController::class, 'store'])->name('shop.wishlist.store');
     Route::delete('/wishlist', [WishlistController::class, 'clear'])->name('shop.wishlist.clear');
     Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy'])->name('shop.wishlist.destroy');
+
+    // Reviews — logged-in customers only, guest হলে login পেজে redirect হবে
+    Route::post('/review', [ReviewController::class, 'storeReview'])->name('review.store');
 });
+
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('shop.checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('shop.checkout.store');
 Route::get('/orders/success', OrderSuccessController::class)->name('shop.orders.success');

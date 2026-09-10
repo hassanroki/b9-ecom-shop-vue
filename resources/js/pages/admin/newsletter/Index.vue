@@ -117,7 +117,7 @@ function formatDate(value: string): string {
 <template>
     <Head title="Newsletters" />
 
-    <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-6">
+    <div class="flex h-full flex-1 flex-col gap-5 p-4 md:p-6">
         <!-- Header -->
         <div
             class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"

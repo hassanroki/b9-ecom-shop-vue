@@ -198,9 +198,9 @@ const year = computed(() => new Date().getFullYear());
                                 />
                             </svg>
                             <a
-                                href="tel:+8801700000000"
+                                href="tel:+8801770910017"
                                 class="transition-colors hover:text-[#87E64B]"
-                                >+880 1700-000000</a
+                                >+880 1770910017</a
                             >
                         </li>
                         <li class="flex items-center gap-2.5">
@@ -218,9 +218,9 @@ const year = computed(() => new Date().getFullYear());
                                 />
                             </svg>
                             <a
-                                href="mailto:support@shopbd.com.bd"
+                                href="mailto:hassan0cse@gmail.com"
                                 class="transition-colors hover:text-[#87E64B]"
-                                >support@shopbd.com.bd</a
+                                >hassan0cse@gmail.com</a
                             >
                         </li>
                     </ul>

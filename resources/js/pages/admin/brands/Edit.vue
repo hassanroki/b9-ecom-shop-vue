@@ -46,7 +46,7 @@ function submit(): void {
 
     <Head :title="`Edit ${brand.name}`" />
 
-    <div class="flex h-full flex-1 flex-col gap-5 p-4 md:p-6">
+    <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-3">
                 <Button as-child variant="ghost" size="icon"
@@ -72,7 +72,7 @@ function submit(): void {
             </span>
         </div>
 
-        <div class="max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div class="max-w-5xl overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <form class="p-6" @submit.prevent="submit">
                 <BrandForm :form="form" :brand="brand" />
 
