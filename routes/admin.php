@@ -3,6 +3,8 @@
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\FaqCategoryController;
+use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\HeroSlideController;
 use App\Http\Controllers\Admin\NewsLetterController;
 use App\Http\Controllers\Admin\OrderController;
@@ -31,4 +33,9 @@ Route::middleware(['auth', 'verified', 'admin'])
         Route::get('newsletters', [NewsLetterController::class, 'index'])->name('newsletters.index');
         Route::get('newsletters/download', [NewsLetterController::class, 'download'])->name('newsletters.download');
         Route::delete('newsletters/{id}', [NewsLetterController::class, 'destroy'])->name('newsletters.destroy');
+
+        Route::resource('faq-categories', FaqCategoryController::class)
+            ->parameters(['faq-categories' => 'faqCategory']);
+
+        Route::resource('faqs', FaqController::class);
     });

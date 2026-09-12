@@ -12,6 +12,7 @@ import {
     Star,
     Mail,
     Images,
+    Settings,
 } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -40,6 +41,8 @@ import { index as heroSlideIndex } from '@/routes/admin/slides';
 import { index as wishlistsIndex } from '@/routes/admin/wishlists';
 import { index as newslettersIndex } from '@/routes/admin/newsletters';
 import { index as reviewsIndex } from '@/routes/admin/review';
+import { index as faqCategoriesIndex } from '@/routes/admin/faq-categories';
+import { index as faqsIndex } from '@/routes/admin/faqs';
 
 
 const mainNavItems = ref([
@@ -100,6 +103,15 @@ const mainNavItems = ref([
         title: 'Newsletters',
         href: newslettersIndex(),
         icon: Mail,
+    },
+    {
+        title: 'Settings',
+        icon: Settings,
+        isOpen: false,
+        children: [
+            { title: 'FAQ Categories', href: faqCategoriesIndex() },
+            { title: 'FAQs', href: faqsIndex() },
+        ],
     },
 ]);
 

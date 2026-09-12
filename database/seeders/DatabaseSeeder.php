@@ -9,7 +9,7 @@ class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 
-     /**
+    /**
      * Seed the application's database.
      */
     public function run(): void
@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             HeroSlideSeeder::class,
             ProductSeeder::class,
             ReviewSeeder::class,
+            FaqSeeder::class,
         ]);
     }
 }

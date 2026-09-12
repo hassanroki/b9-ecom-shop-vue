@@ -378,9 +378,9 @@ export interface AdminHeroSlide {
     title: string | null;
     subtitle: string | null;
     button_text: string | null;
-    image: string | null;      // resolved/displayable URL
+    image: string | null; // resolved/displayable URL
     image_source: 'url' | 'upload';
-    image_url: string;         // raw stored value, only for prefilling the URL-mode form field
+    image_url: string; // raw stored value, only for prefilling the URL-mode form field
     link: string | null;
     sort_order: number;
     is_active: boolean;
@@ -396,6 +396,44 @@ export interface HeroSlideFormData {
     image: string;
     image_file: File | null;
     link: string;
+    sort_order: number;
+    is_active: boolean;
+}
+
+export interface AdminFaqCategory {
+    id: number;
+    name: string;
+    slug: string;
+    sort_order: number;
+    is_active: boolean;
+    faqs_count: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AdminFaq {
+    id: number;
+    faq_category_id: number;
+    category: { id: number; name: string } | null;
+    question: string;
+    answer: string;
+    sort_order: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface FaqCategoryFormData {
+    name: string;
+    slug: string;
+    sort_order: number;
+    is_active: boolean;
+}
+
+export interface FaqFormData {
+    faq_category_id: number | '';
+    question: string;
+    answer: string;
     sort_order: number;
     is_active: boolean;
 }
