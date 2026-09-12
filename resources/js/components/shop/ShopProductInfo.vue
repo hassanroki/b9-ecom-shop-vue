@@ -20,6 +20,13 @@ const { toggleWish, isWishlisted: checkWishlisted } = useShopWishlist();
 
 const isWishlisted = computed(() => checkWishlisted(product.id));
 
+const summaryLines = computed(() =>
+    (product.summary ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0),
+);
+
 function clampQuantity(): void {
     quantity.value = Math.max(1, Number(quantity.value) || 1);
 }
@@ -71,7 +78,7 @@ function goToReviews(): void {
             <ShopStarRating :rating="product.rating" />
             <span class="text-sm font-medium text-gray-700">{{
                 product.rating
-            }}</span>
+                }}</span>
             <button type="button" class="text-sm text-gray-500 hover:text-shop-primary-600" @click="goToReviews">
                 {{ product.reviews }} reviews
             </button>
@@ -83,18 +90,21 @@ function goToReviews(): void {
         <div class="mt-5 flex flex-wrap items-end gap-3">
             <span class="text-3xl font-bold text-shop-primary-600">{{
                 formatTaka(product.price)
-            }}</span>
+                }}</span>
             <span v-if="product.oldPrice" class="text-lg text-gray-400 line-through">{{ formatTaka(product.oldPrice)
-            }}</span>
+                }}</span>
             <span v-if="product.oldPrice"
                 class="rounded-full bg-shop-accent-500 px-2.5 py-1 text-xs font-semibold text-white">
                 Save {{ savingsPercent(product.price, product.oldPrice) }}%
             </span>
         </div>
 
-        <p class="mt-5 max-w-prose text-sm leading-relaxed text-gray-600 md:text-base">
-            {{ product.summary }}
-        </p>
+        <ul v-if="summaryLines.length > 0"
+            class="mt-5 max-w-prose list-none space-y-1 text-sm leading-relaxed text-gray-600 md:text-base">
+            <li v-for="(line, index) in summaryLines" :key="index">
+                {{ line }}
+            </li>
+        </ul>
 
         <hr class="my-6 border-gray-200" />
 

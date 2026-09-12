@@ -22,7 +22,7 @@ trait ProductValidationRules
                 'alpha_dash',
                 Rule::unique('products', 'slug')->ignore($productId),
             ],
-            'short_description' => ['nullable', 'string', 'max:255'],
+            'short_description' => ['nullable', 'string', 'max:1000'],
             'description' => ['nullable', 'string', 'max:10000'],
             'price' => ['required', 'numeric', 'min:0'],
             'compare_at_price' => ['nullable', 'numeric', 'min:0'],

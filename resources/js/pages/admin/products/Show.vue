@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Head, Link, setLayoutProps } from '@inertiajs/vue3';
 import { Pencil } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
@@ -37,6 +38,13 @@ setLayoutProps({
         },
     ],
 });
+
+const shortDescriptionLines = computed(() =>
+    (props.product.short_description ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0),
+);
 </script>
 
 <template>
@@ -115,11 +123,13 @@ setLayoutProps({
                         <p class="text-sm text-muted-foreground">
                             Short description
                         </p>
-                        <p class="font-medium">
-                            {{
-                                product.short_description ||
-                                'No short description.'
-                            }}
+                        <ul v-if="shortDescriptionLines.length > 0" class="list-none space-y-0.5">
+                            <li v-for="(line, index) in shortDescriptionLines" :key="index" class="font-medium">
+                                {{ line }}
+                            </li>
+                        </ul>
+                        <p v-else class="font-medium text-muted-foreground">
+                            No short description.
                         </p>
                     </div>
 

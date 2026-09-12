@@ -70,8 +70,12 @@ const selectClass =
 
             <div class="grid gap-2">
                 <Label for="short_description">Short description</Label>
-                <textarea id="short_description" v-model="form.short_description" rows="2" :class="inputClass"
-                    placeholder="Brief summary shown on product cards" />
+                <textarea id="short_description" v-model="form.short_description" rows="6" :class="inputClass"
+                    placeholder="One spec per line, e.g.:&#10;Model: Redmi Note 17 Pro Max 5G&#10;Display: 6.83&quot; 1.5K AMOLED 120Hz&#10;Camera: 50MP+8MP Rear, 32MP Selfie" />
+                <p class="text-xs text-muted-foreground">
+                    Write each spec on its own line — each line will be shown as a separate bullet on the product
+                    card/page.
+                </p>
                 <InputError :message="form.errors.short_description" />
             </div>
 
