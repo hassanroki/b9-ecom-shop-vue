@@ -18,6 +18,7 @@ use App\Http\Controllers\Storefront\WishlistController;
 use App\Http\Controllers\Storefront\Api\SearchSuggestionController;
 use App\Http\Controllers\Storefront\BrandController;
 use App\Http\Controllers\Storefront\CategoryController;
+use App\Http\Controllers\Storefront\FaqPageController;
 use App\Http\Controllers\Storefront\NewsletterController;
 use App\Http\Controllers\Storefront\ReviewController;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +43,10 @@ Route::delete('/cart', [CartController::class, 'clear'])->name('shop.cart.clear'
 Route::delete('/cart/{productId}', [CartController::class, 'destroy'])->name('shop.cart.destroy');
 
 Route::get('/wishlist', [WishlistController::class, 'index'])->name('shop.wishlist');
+
+Route::get('/faq', FaqPageController::class)->name('faq.index');
+
+
 Route::middleware('auth')->group(function () {
     Route::post('/wishlist', [WishlistController::class, 'store'])->name('shop.wishlist.store');
     Route::delete('/wishlist', [WishlistController::class, 'clear'])->name('shop.wishlist.clear');

@@ -142,3 +142,17 @@ export type ShopCheckoutConfig = {
     outsideDhaka: number;
     dhakaDistrict: string;
 };
+
+
+export type ShopFaq = {
+    id: number;
+    question: string;
+    answer: string;
+};
+
+export type ShopFaqCategory = {
+    id: number;
+    name: string;
+    slug: string;
+    faqs: ShopFaq[];
+};
