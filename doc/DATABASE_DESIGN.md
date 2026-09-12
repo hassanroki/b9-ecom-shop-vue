@@ -121,7 +121,6 @@ Admin-managed home carousel. Storefront shows image only; heading/subtext/CTA op
 | `id`                        | `bigIncrements`        | PK                                      |
 | `image`                     | `string(255)`          | image path on public disk. **Required** |
 | `link`                      | `string(255)` nullable | CTA destination URL                     |
-| `cta_label`                 | `string(100)` nullable | CTA button text                         |
 | `sort_order`                | `unsignedInteger`      | default `0` — manual ordering           |
 | `is_active`                 | `boolean`              | default `true`                          |
 | `created_at` / `updated_at` | `timestamps`           |                                         |

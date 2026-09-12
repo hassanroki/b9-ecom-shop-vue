@@ -2,7 +2,7 @@ Laravel Ecommerce Project Vue Inertia
 =====================================
 
 
-1. Project Install: 
+1. Project Install:
 -------------------
 Command: Laravel new b9-ecom-shop-vue
 
@@ -592,7 +592,6 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable([
     'image',
     'link',
-    'cta_label',
     'sort_order',
     'is_active',
 ])]

@@ -100,6 +100,10 @@ export type ShopCategory = {
 export type ShopCarouselSlide = {
     src: string;
     alt: string;
+    title?: string | null;
+    subtitle?: string | null;
+    buttonText?: string | null;
+    link?: string | null;
 };
 
 export type ShopCartItem = {

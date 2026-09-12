@@ -119,7 +119,7 @@ export type AdminProduct = AdminProductListItem & {
 
 export type ProductFormData = {
     category_id: number | '';
-    brand_id: number | null
+    brand_id: number | null;
     name: string;
     slug: string;
     short_description: string;
@@ -371,4 +371,31 @@ export interface AdminNewsletterPaginated {
 
 export interface AdminNewsletterFilters {
     search: string;
+}
+
+export interface AdminHeroSlide {
+    id: number;
+    title: string | null;
+    subtitle: string | null;
+    button_text: string | null;
+    image: string | null;      // resolved/displayable URL
+    image_source: 'url' | 'upload';
+    image_url: string;         // raw stored value, only for prefilling the URL-mode form field
+    link: string | null;
+    sort_order: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface HeroSlideFormData {
+    title: string;
+    subtitle: string;
+    button_text: string;
+    image_source: 'url' | 'upload';
+    image: string;
+    image_file: File | null;
+    link: string;
+    sort_order: number;
+    is_active: boolean;
 }

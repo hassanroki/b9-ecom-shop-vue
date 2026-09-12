@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
+    'title',
+    'subtitle',
+    'button_text',
     'image',
     'link',
-    'cta_label',
     'sort_order',
     'is_active',
 ])]

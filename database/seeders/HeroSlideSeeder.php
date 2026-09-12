@@ -8,20 +8,29 @@ use Illuminate\Database\Seeder;
 class HeroSlideSeeder extends Seeder
 {
     /**
-     * @var list<array{image: string, link: string|null, sort_order: int}>
+     * @var list<array{title: string, subtitle: string|null, button_text: string|null, image: string, link: string|null, sort_order: int}>
      */
     private const SLIDES = [
         [
+            'title' => 'New Season Arrivals',
+            'subtitle' => 'Discover the latest trends for this season',
+            'button_text' => 'Shop Now',
             'image' => 'https://images.pexels.com/photos/8886939/pexels-photo-8886939.jpeg',
             'link' => '/shop',
             'sort_order' => 1,
         ],
         [
+            'title' => 'Smart Living, Smarter Prices',
+            'subtitle' => 'Top-rated smart home devices, hand-picked for you',
+            'button_text' => 'Explore Bestsellers',
             'image' => 'https://img.magnific.com/free-photo/rendering-smart-home-device_23-2151039324.jpg?t=st=1784957786~exp=1784961386~hmac=82e55dc90a660b097733d2cf32f5fb841efc20528eab940dfe580b909bd34acc&w=1480',
             'link' => '/shop?sort=best',
             'sort_order' => 2,
         ],
         [
+            'title' => 'Fashion Edit',
+            'subtitle' => 'Curated styles to elevate your wardrobe',
+            'button_text' => 'Shop Fashion',
             'image' => 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=1920&q=70',
             'link' => '/shop?category=fashion',
             'sort_order' => 3,

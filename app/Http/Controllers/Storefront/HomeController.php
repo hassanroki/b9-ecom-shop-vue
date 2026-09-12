@@ -8,6 +8,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\HeroSlide;
 use App\Models\Product;
+use App\Services\HeroSlideImageService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection as SupportCollection;
 use Inertia\Inertia;
@@ -17,6 +18,10 @@ use App\Support\ImageUrl;
 
 class HomeController extends Controller
 {
+    public function __construct(
+        private readonly HeroSlideImageService $heroSlideImageService,
+    ) {}
+
     private const HOMEPAGE_PRODUCT_LIMIT = 4;
 
     /**
@@ -39,18 +44,30 @@ class HomeController extends Controller
         ]);
     }
 
+
     /**
-     * @return list<array{src: string, alt: string}>
+     * @return list<array{
+     *     src: string,
+     *     alt: string,
+     *     title: string|null,
+     *     subtitle: string|null,
+     *     buttonText: string|null,
+     *     link: string|null
+     * }>
      */
     private function heroSlides(): array
     {
         return HeroSlide::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
-            ->get(['image'])
+            ->get(['image', 'title', 'subtitle', 'button_text', 'link'])
             ->map(fn(HeroSlide $slide): array => [
-                'src' => $slide->image,
-                'alt' => 'Featured promotion banner',
+                'src' => $this->heroSlideImageService->resolveUrl($slide->image) ?? '',
+                'alt' => $slide->title ?? 'Featured promotion banner',
+                'title' => $slide->title,
+                'subtitle' => $slide->subtitle,
+                'buttonText' => $slide->button_text,
+                'link' => $slide->link,
             ])
             ->all();
     }

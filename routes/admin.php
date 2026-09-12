@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\HeroSlideController;
 use App\Http\Controllers\Admin\NewsLetterController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
@@ -18,6 +19,7 @@ Route::middleware(['auth', 'verified', 'admin'])
         Route::resource('brands', BrandController::class);
         Route::resource('products', ProductController::class);
         Route::resource('orders', OrderController::class)->only(['index', 'show', 'update']);
+        Route::resource('slides', HeroSlideController::class)->parameters(['slides' => 'heroSlide']);
         Route::resource('wishlists', WishlistController::class)->only(['index']);
         Route::resource('coupons', CouponController::class);
 

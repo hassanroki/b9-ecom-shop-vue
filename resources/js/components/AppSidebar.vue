@@ -11,6 +11,7 @@ import {
     Ticket,
     Star,
     Mail,
+    Images,
 } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -35,6 +36,7 @@ import {
 import { index as couponsIndex } from '@/routes/admin/coupons';
 import { index as ordersIndex } from '@/routes/admin/orders';
 import { index as productsIndex } from '@/routes/admin/products';
+import { index as heroSlideIndex } from '@/routes/admin/slides';
 import { index as wishlistsIndex } from '@/routes/admin/wishlists';
 import { index as newslettersIndex } from '@/routes/admin/newsletters';
 import { index as reviewsIndex } from '@/routes/admin/review';
@@ -78,6 +80,11 @@ const mainNavItems = ref([
         title: 'Orders',
         href: ordersIndex(),
         icon: ShoppingCart,
+    },
+    {
+        title: 'HeroSlides',
+        href: heroSlideIndex(),
+        icon: Images,
     },
     {
         title: 'Wishlists',
